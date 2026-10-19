@@ -155,7 +155,7 @@ $('#sync').addEventListener('click',()=>{if(syncState&&syncState!=='Non connect�
 let lastLoad=0;
 function applyData(r,live){
   D.themes=r.themes.map(t=>({c:t[0],d:t[1],o:t[2],k:t[3],t:t[4],statut:t[5]}));
-  D.subj={};r.subjects.forEach(s=>D.subj[s[0]]={id:s[0],code:s[1],text:s[2],prio:s[3],statut:s[4],ordre:s[5],dstatut:s[6]});
+  D.subj={};r.subjects.forEach(s=>D.subj[s[0]]={id:s[0],code:s[1],text:s[2],prio:s[3],statut:s[4],ordre:s[5],dstatut:s[6],aj:s[7]||0});D.pairs=r.pairs||[];D.rewrite=r.rewrite||null;
   D.nights=r.nights||[];D.songs=r.songs||[];D.exauces=r.exauces;D.prog=r.prog;D.settings=r.settings;D.journal=r.journal;D.me=r.me||(CFG&&CFG.me)||'';D.loaded=true;
   if(live&&r.today){const t=new Date(r.today+'T00:00');if(!isNaN(t)&&iso(t)===iso(new Date()))today=t}
   reindex();
@@ -241,7 +241,7 @@ function subjLi(x,num,withCheck){
   const done=withCheck&&prie[x.id];
   return `<li class="${done?'done':''}">${withCheck?`<input type="checkbox" data-prie="${esc(x.id)}" ${done?'checked':''} aria-label="Prié">`:'<span></span>'}
    <div class="tx"><span class="n">${num}.</span>${x.prio?'<span class="star" title="Prioritaire">★ </span>':''}${esc(x.text)}</div>
-   <div class="acts"><button class="btn small ok" data-exa="${esc(x.id)}">${ic('star')}Exaucé</button><button class="btn small icon" data-edit="${esc(x.id)}" aria-label="Modifier" title="Modifier">${ic('pencil')}</button>${withCheck?'':`<button class="btn small icon" data-ret="${esc(x.id)}" aria-label="Retirer de la prière" title="Retirer de la prière">${ic('x')}</button>`}</div>
+   <div class="acts"><button class="btn small icon" data-exa="${esc(x.id)}" aria-label="Marquer ce sujet comme exaucé" title="Marquer comme exaucé">${ic('star')}</button><button class="btn small icon" data-edit="${esc(x.id)}" aria-label="Modifier" title="Modifier">${ic('pencil')}</button>${withCheck?'':`<button class="btn small icon" data-ret="${esc(x.id)}" aria-label="Retirer de la prière" title="Retirer de la prière">${ic('x')}</button>`}</div>
    ${st.edit===x.id?`<div class="panel warm"><label class="f">Modifier le sujet<textarea id="edTx">${esc(x.text)}</textarea></label><label class="inl"><input type="checkbox" id="edPrio" ${x.prio?'checked':''}> Prioritaire ★ (en tête du lot 1)</label>
      <div class="acts left"><button class="btn primary" data-edsave="${esc(x.id)}">${ic('check')}Enregistrer la modification</button><button class="btn" data-cancel>Annuler</button></div></div>`:''}
    ${st.open===x.id?`<div class="panel"><label class="f">Témoignage (facultatif)<textarea id="tem" placeholder="Ce que Dieu a fait…"></textarea></label>
@@ -347,7 +347,7 @@ function vThemes(){
     body=gestCard(t)+impCard()+`<div class="card"><div class="row"><label class="f" style="flex:3 1 260px">Nouveau sujet pour « ${esc(t.t)} »<input type="text" id="newTx" placeholder="Disons au Seigneur : …"></label><label class="inl" style="flex:0 0 auto"><input type="checkbox" id="newPrio" checked> Prioritaire ★</label><button class="btn primary" id="addBtn" style="flex:0 0 auto">${ic('plus')}Ajouter</button></div></div>
      <section class="theme" style="--cat:${catStyle(t.k)[0]}"><div class="thead"><span class="ticon">${ic(catStyle(t.k)[1])}</span><div class="tmeta"><div class="code"><span class="chip">${esc(t.k)}</span>${esc(t.c)} · ${all.length} sujets actifs · ${Math.max(1,Math.ceil(all.length/N))} lots</div><h3>${esc(t.t)}</h3></div></div><ol class="subj">${html}</ol></section>
      ${ret.length?`<h2>Sujets retirés</h2><div class="theme">${ret.map(s=>`<div class="ex"><div>${esc(s.text)}</div><div class="meta">Retiré le ${fmt(s.dstatut)} <button class="btn small" data-restore="${esc(s.id)}">${ic('undo')}Remettre en prière</button></div></div>`).join('')}</div>`:''}`}
-  return `<div class="row" style="margin-bottom:12px"><label class="f">Jour<select id="thDay">${['TOUS LES JOURS',...DAYS].map(d=>`<option ${d===st.thDay?'selected':''}>${d}</option>`).join('')}</select></label>
+  return rwCard()+`<div class="row" style="margin-bottom:12px"><label class="f">Jour<select id="thDay">${['TOUS LES JOURS',...DAYS].map(d=>`<option ${d===st.thDay?'selected':''}>${d}</option>`).join('')}</select></label>
    <label class="f" style="flex:2 1 240px">Thème<select id="thCode">${list.map(x=>`<option value="${esc(x.c)}" ${x.c===st.thCode?'selected':''}>${esc(x.c+' · '+x.t)}</option>`).join('')}</select></label>
    <label class="f">Rechercher dans tous les sujets<input type="text" id="q" value="${esc(st.q)}" placeholder="ex. santé, travail…"></label></div>${body}`;
 }
@@ -410,11 +410,12 @@ function vEglise(){
 
 /* ================= Nuit de prière personnelle ================= */
 const NIGHT={};               // nuits chargées : id -> {id,date,titre,duree,sec,items,par,modif}
-const nCount=n=>Math.max(1,Math.round((+n.duree||180)*60/(+n.sec||30)));
+const NCAP=2000;const nCount=n=>NCAP;   // plus de limite fixe : la durée suit le nombre de sujets
+const nDur=n=>nFilled(n)*(+n.sec||30)/60;
 const nFilled=n=>(n.items||[]).filter(Boolean).length;
 const hm=min=>{min=Math.round(min);const h=Math.floor(min/60),m=min%60;return (h?h+' h':'')+(h&&m?' ':'')+(m||!h?m+' min':'')};
 const nPrie=id=>ls.get('apg_nprie_'+id,{});
-function nightMeta(n){return {id:n.id,date:n.date,titre:n.titre,duree:n.duree,sec:n.sec,par:n.par||'',modif:n.modif||'',nb:nFilled(n)}}
+function nightMeta(n){return {id:n.id,date:n.date,titre:n.titre,duree:Math.round(nDur(n)),sec:n.sec,par:n.par||'',modif:n.modif||'',nb:nFilled(n)}}
 function upsertMeta(n){const m=nightMeta(n);const i=(D.nights||[]).findIndex(x=>x.id===n.id);if(i<0)(D.nights=D.nights||[]).push(m);else D.nights[i]=Object.assign(D.nights[i],m)}
 function cacheNight(n){NIGHT[n.id]=n;ls.set('apg_nuit_'+n.id,n)}
 async function openNight(id){
@@ -426,7 +427,7 @@ async function openNight(id){
 }
 const nSave={t:0};
 function saveNightSoon(n,now){upsertMeta(n);cacheNight(n);clearTimeout(nSave.t);nSave.t=setTimeout(async()=>{nSave.t=0;
-  const payload={id:n.id,date:n.date,titre:n.titre,duree:n.duree,sec:n.sec,items:n.items};
+  const payload={id:n.id,date:n.date,titre:n.titre,duree:Math.round(nDur(n)),sec:n.sec,items:n.items};
   outbox=outbox.filter(x=>!(x.fn==='saveNight'&&x.a[0].id===n.id));saveOutbox();
   try{const r=await act('saveNight',[payload]);if(r){n.modif=r.modif;n.par=r.par;upsertMeta(n);cacheNight(n);if(st.tab==='nuit')paintNightStats()}}catch(e){}
 },now?0:1200)}
@@ -439,25 +440,24 @@ function nightsList(){
   const fut=all.filter(n=>n.date>=td).sort((a,b)=>a.date.localeCompare(b.date)),pas=all.filter(n=>n.date<td).sort((a,b)=>b.date.localeCompare(a.date));
   const card=n=>{const d=new Date(n.date+'T00:00');const N=nCount(n);const p=Object.values(nPrie(n.id)).filter(Boolean).length;
     return `<button class="ncard" data-nopen="${esc(n.id)}"><span class="date">${isNaN(d)?'?':d.getDate()}<small>${isNaN(d)?'':d.toLocaleDateString('fr-FR',{month:'short'})}</small></span>
-      <span class="nbody"><b>${esc(n.titre||'Nuit de prière')}</b><span class="muted">${isNaN(d)?'':d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · ${hm(n.duree)} · ${n.sec} s par sujet</span>
-      <span class="nbar"><i style="width:${Math.min(100,n.nb/N*100)}%"></i></span><span class="muted">${n.nb}/${N} sujets écrits${p?` · ${p} priés`:''}${n.par?` · ${esc(n.par)}`:''}</span></span>${ic('right')}</button>`};
+      <span class="nbody"><b>${esc(n.titre||'Nuit de prière')}</b><span class="muted">${isNaN(d)?'':d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</span>
+      <span class="nbar"><i style="width:${n.nb?Math.min(100,p/n.nb*100):0}%"></i></span><span class="muted">${n.nb} sujet${n.nb>1?'s':''} · ${hm(n.nb*n.sec/60)} (${n.sec} s par sujet)${p?` · ${p} priés`:''}${n.par?` · ${esc(n.par)}`:''}</span></span>${ic('right')}</button>`};
   return `<div class="card"><b class="ctitle">${ic('moon')}Nouvelle nuit de prière</b>
    <div class="row mt"><label class="f">Date de la nuit<input type="date" id="nDate" value="${td}"></label>
    <label class="f" style="flex:2 1 220px">Intention (facultatif)<input type="text" id="nTitre" placeholder="ex. Nuit pour la famille"></label></div>
-   <div class="row mt"><label class="f">Durée<select id="nDuree">${[60,90,120,150,180,240,300,360,420,480].map(m=>`<option value="${m}" ${m===180?'selected':''}>${hm(m)}</option>`).join('')}</select></label>
-   <label class="f">Secondes par sujet<select id="nSec">${[15,20,30,45,60,90,120].map(v=>`<option ${v===30?'selected':''}>${v}</option>`).join('')}</select></label>
+   <div class="row mt"><label class="f">Secondes par sujet<select id="nSec">${[15,20,30,45,60,90,120].map(v=>`<option ${v===30?'selected':''}>${v}</option>`).join('')}</select></label>
    <button class="btn primary" id="nCreate" style="flex:0 0 auto">${ic('plus')}Créer la nuit</button></div>
-   <p class="muted mt">3 h à 30 s par sujet = 360 sujets numérotés à écrire ou à dicter.</p></div>
+   <p class="muted mt">Pas de durée à choisir : elle se calcule toute seule avec le nombre de sujets que vous écrivez (ex. 360 sujets × 30 s = 3 h).</p></div>
   ${fut.length?`<h2>Nuits à venir</h2><div class="nlist">${fut.map(card).join('')}</div>`:''}
   ${pas.length?`<h2>Nuits passées</h2><div class="nlist">${pas.map(card).join('')}</div>`:''}
   ${!all.length?`<div class="empty">Aucune nuit pour l’instant. Choisissez une date ci-dessus et créez votre première nuit de prière.</div>`:''}`;
 }
 function nightView(n){
-  const N=nCount(n);const items=n.items||[];const filled=nFilled(n);const pr=nPrie(n.id);const np=Object.keys(pr).filter(k=>pr[k]&&items[k]).length;
+  const items=n.items||[];const filled=nFilled(n);const lastI=items.reduce((m,x,i)=>x?i:m,-1);const N=Math.min(NCAP,lastI+11);const pr=nPrie(n.id);const np=Object.keys(pr).filter(k=>pr[k]&&items[k]).length;
   const d=new Date(n.date+'T00:00');const nextEmpty=firstEmpty(n);
   let rows='';let shownEmpty=0;
   for(let i=0;i<N;i++){const x=items[i]||'';
-    if(!x&&!st.nAll&&st.nEdit!==i){if(shownEmpty>=10)continue;shownEmpty++}
+    if(!x&&st.nEdit!==i){if(shownEmpty>=10)continue;shownEmpty++}
     const ed=st.nEdit===i;const live=dict.on&&dict.row===i;
     rows+=`<li class="${x&&pr[i]?'done':''}${live?' live':''}" id="nrow${i}"><span class="nnum">${i+1}</span>
      <div class="tx">${ed?`<textarea id="nEdTx" rows="3" placeholder="Disons au Seigneur : …">${esc(x)}</textarea>`:x?esc(x):`<span class="muted" style="font-style:italic">Sujet à écrire ou à dicter</span>`}</div>
@@ -469,8 +469,7 @@ function nightView(n){
    <input type="text" id="nTitreEd" class="nh-title" value="${esc(n.titre)}" placeholder="Intention de la nuit" aria-label="Intention de la nuit"></div>
    <button class="btn primary nplay" data-nrun ${filled?'':'disabled'}>${ic('play')}Commencer la nuit</button></div>
    <div class="hero-stats" id="nStats">${nStatsHTML(n)}</div>
-   <div class="row" style="margin-top:12px"><label class="f">Date<input type="date" id="nDateEd" value="${esc(n.date)}"></label><label class="f">Durée<select id="nDureeEd">${[60,90,120,150,180,240,300,360,420,480].map(m=>`<option value="${m}" ${m===+n.duree?'selected':''}>${hm(m)}</option>`).join('')}</select></label>
-   <label class="f">Secondes par sujet<select id="nSecEd">${[15,20,30,45,60,90,120].map(v=>`<option ${v===+n.sec?'selected':''}>${v}</option>`).join('')}</select></label></div></section>
+   <div class="row" style="margin-top:12px"><label class="f">Date<input type="date" id="nDateEd" value="${esc(n.date)}"></label>   <label class="f">Secondes par sujet<select id="nSecEd">${[15,20,30,45,60,90,120].map(v=>`<option ${v===+n.sec?'selected':''}>${v}</option>`).join('')}</select></label></div></section>
   <div class="card dict${dict.on&&dict.row==null?' on':''}" id="dictCard"><div class="dict-top"><button class="micbig" id="dictBtn" aria-pressed="${dict.on&&dict.row==null}" aria-label="${dict.on?'Arrêter la dictée':'Dicter les sujets'}">${ic('mic')}</button>
    <div style="min-width:0;flex:1"><b>${dict.on&&dict.row==null?'Je vous écoute…':'Dicter les sujets'}</b><div class="muted" id="dictHint">${dict.on&&dict.row==null?`Sujet n° ${dictTarget(n)+1}. Dites « suivant » pour passer au sujet suivant.`:`Touchez le micro et parlez : chaque sujet se place au n° ${nextEmpty+1} puis à la suite.`}</div></div></div>
    <div class="dict-live" id="dictLive" ${dict.on?'':'hidden'}>${esc(dict.buf)} <i>${esc(dict.interim)}</i></div>
@@ -479,12 +478,12 @@ function nightView(n){
   <div class="acts left" style="margin-bottom:12px"><button class="btn" id="nPasteBtn">${ic('list')}Coller plusieurs sujets</button><button class="btn" id="nCopy">${ic('copy')}Copier la liste</button><button class="btn" id="nDelNight">${ic('trash')}Supprimer la nuit</button></div>
   ${st.nPaste?`<div class="card imp"><label class="f">Un sujet par ligne. Ils se placent à partir du n° ${nextEmpty+1}.<textarea id="nPaste" rows="6" placeholder="Disons au Seigneur : …\nBrisons …"></textarea></label><div class="acts left mt"><button class="btn primary" id="nPasteGo">${ic('plus')}Ajouter à la suite</button><button class="btn" id="nPasteNo">Annuler</button></div></div>`:''}
   ${st.nDelAsk?`<div class="card panel warm"><b>Supprimer « ${esc(n.titre||'cette nuit')} » et ses ${filled} sujets ?</b><div class="acts left"><button class="btn primary" id="nDelOk">Oui, supprimer</button><button class="btn" id="nDelNo">Non</button></div></div>`:''}
-  <section class="theme" style="--cat:#4B2E91"><div class="thead"><span class="ticon">${ic('moon')}</span><div class="tmeta"><div class="code"><span class="chip">NUIT</span>${filled}/${N} sujets écrits</div><h3>Sujets de la nuit</h3></div></div>
+  <section class="theme" style="--cat:#4B2E91"><div class="thead"><span class="ticon">${ic('moon')}</span><div class="tmeta"><div class="code"><span class="chip">NUIT</span>${filled} sujet${filled>1?'s':''} · ${hm(filled*n.sec/60)}</div><h3>Sujets de la nuit</h3></div></div>
    <ol class="subj nsubj">${rows}</ol>
-   ${N-filled>10?`<div class="acts" style="padding:10px 14px"><button class="btn small" data-nall>${st.nAll?'Masquer les sujets vides':`Afficher les ${N-filled} numéros vides`}</button></div>`:''}</section>`;
+</section>`;
 }
-function nStatsHTML(n){const N=nCount(n);const f=nFilled(n);const pr=nPrie(n.id);const p=Object.keys(pr).filter(k=>pr[k]&&(n.items||[])[k]).length;
-  return `<span>${ic('list')}${f}/${N} sujets écrits</span><span>${ic('clock')}${hm(f*n.sec/60)} sur ${hm(n.duree)}</span><span>${ic('check')}${p} priés</span>${n.par?`<span>${ic('user')}${esc(n.par)}${n.modif?' · '+esc(n.modif.slice(11)):''}</span>`:''}`}
+function nStatsHTML(n){const f=nFilled(n);const pr=nPrie(n.id);const p=Object.keys(pr).filter(k=>pr[k]&&(n.items||[])[k]).length;
+  return `<span>${ic('list')}${f} sujet${f>1?'s':''}</span><span>${ic('clock')}Durée ${hm(f*n.sec/60)}</span><span>${ic('check')}${p} priés</span>${n.par?`<span>${ic('user')}${esc(n.par)}${n.modif?' · '+esc(n.modif.slice(11)):''}</span>`:''}`}
 function paintNightStats(){const n=curNight(),el=$('#nStats');if(n&&el)el.innerHTML=nStatsHTML(n)}
 function firstEmpty(n){const N=nCount(n);for(let i=0;i<N;i++)if(!(n.items||[])[i])return i;return N}
 
@@ -496,7 +495,7 @@ const capFirst=t=>t?t.charAt(0).toUpperCase()+t.slice(1):t;
 function dictStart(row){
   if(!SR){toast(isIOS?"Pour dicter sur iPhone : touchez le crayon d'un sujet, puis le micro du clavier.":"La dictée n'est pas disponible dans ce navigateur. Utilisez Chrome, ou le micro du clavier.");return}
   dictStop(true);const n=curNight();if(!n)return;
-  if(row==null&&firstEmpty(n)>=nCount(n)){toast('Tous les numéros de cette nuit sont remplis. Augmentez la durée pour en ajouter.');return}
+  if(row==null&&firstEmpty(n)>=nCount(n)){toast('Limite de '+NCAP+' sujets atteinte.');return}
   const r=new SR();r.lang='fr-FR';r.continuous=true;r.interimResults=true;r.maxAlternatives=1;
   r.onresult=e=>{let fin='',int='';for(let i=e.resultIndex;i<e.results.length;i++){const x=e.results[i];if(x.isFinal)fin+=x[0].transcript;else int+=x[0].transcript}
     dict.interim=int;if(fin)dictFinal(fin);paintDict()};
@@ -563,8 +562,8 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button');i
   try{
   if(d.nopen)openNight(d.nopen);
   else if(d.nback!==undefined){dictStop(true);st.nightId=null;st.nDelAsk=false;render(true)}
-  else if(b.id==='nCreate'){const date=$('#nDate').value||iso(today);const nn={id:'NUIT-'+Date.now().toString(36).toUpperCase(),date,titre:$('#nTitre').value.trim(),duree:+$('#nDuree').value||180,sec:+$('#nSec').value||30,items:[],par:D.me};
-    cacheNight(nn);upsertMeta(nn);st.nightId=nn.id;render(true);saveNightSoon(nn,true);toast(`Nuit créée : ${nCount(nn)} sujets à écrire.`)}
+  else if(b.id==='nCreate'){const date=$('#nDate').value||iso(today);const nn={id:'NUIT-'+Date.now().toString(36).toUpperCase(),date,titre:$('#nTitre').value.trim(),duree:0,sec:+$('#nSec').value||30,items:[],par:D.me};
+    cacheNight(nn);upsertMeta(nn);st.nightId=nn.id;render(true);saveNightSoon(nn,true);toast('Nuit créée : écrivez ou dictez vos sujets, la durée se calcule toute seule.')}
   else if(d.nedit!==undefined){dictStop(true);st.nEdit=+d.nedit;render(true);setTimeout(()=>{const t=$('#nEdTx');if(t){t.focus();t.setSelectionRange(t.value.length,t.value.length)}},0)}
   else if(d.ncancel!==undefined){st.nEdit=null;render(true)}
   else if(d.nsave!==undefined&&n){const i=+d.nsave;const v=capFirst($('#nEdTx').value.replace(/\s+/g,' ').trim());n.items=(n.items||[]).slice();while(n.items.length<i)n.items.push('');n.items[i]=v;st.nEdit=null;saveNightSoon(n);render(true)}
@@ -578,7 +577,7 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button');i
   else if(b.id==='nPasteNo'){st.nPaste=false;render(true)}
   else if(b.id==='nPasteGo'&&n){const lines=$('#nPaste').value.split(/\r?\n/).map(x=>x.replace(/^\s*\d+\s*[.)\-–:]\s*/,'').trim()).filter(Boolean);const N=nCount(n);n.items=(n.items||[]).slice();let k=0,i=0;
     for(const l of lines){while(i<N&&n.items[i])i++;if(i>=N)break;while(n.items.length<i)n.items.push('');n.items[i]=capFirst(l);k++}
-    st.nPaste=false;saveNightSoon(n);render(true);toast(k<lines.length?`${k} sujets ajoutés ; ${lines.length-k} n’ont pas de place (augmentez la durée).`:`${k} sujets ajoutés.`)}
+    st.nPaste=false;saveNightSoon(n);render(true);toast(k<lines.length?`${k} sujets ajoutés ; ${lines.length-k} n’ont pas de place (limite atteinte).`:`${k} sujets ajoutés.`)}
   else if(b.id==='nCopy'&&n){const t=(n.titre?n.titre+'\n':'')+(n.items||[]).map((x,i)=>x?`${i+1}. ${x}`:'').filter(Boolean).join('\n');try{await navigator.clipboard.writeText(t);toast('Liste copiée.')}catch(_){prompt('Copiez la liste :',t)}}
   else if(b.id==='nDelNight'){st.nDelAsk=true;render(true)}
   else if(b.id==='nDelNo'){st.nDelAsk=false;render(true)}
@@ -592,74 +591,39 @@ document.addEventListener('change',e=>{const t=e.target;const n=curNight();
   else if(!n)return;
   else if(t.id==='nTitreEd'){n.titre=t.value.trim();saveNightSoon(n)}
   else if(t.id==='nDateEd'&&t.value){n.date=t.value;saveNightSoon(n);render(true)}
-  else if(t.id==='nDureeEd'||t.id==='nSecEd'){const nd=+$('#nDureeEd').value,ns=+$('#nSecEd').value;const newN=Math.round(nd*60/ns);
-    const last=(n.items||[]).reduce((m,x,i)=>x?i+1:m,0);if(newN<last){toast(`Impossible : le sujet n° ${last} serait hors de la nuit (${newN} sujets). Effacez d’abord les derniers sujets.`);render(true);return}
-    n.duree=nd;n.sec=ns;saveNightSoon(n);render(true)}
+  else if(t.id==='nSecEd'){n.sec=+t.value||30;saveNightSoon(n);render(true)}
 });
 
-/* ================= Chants de louange et d'adoration ================= */
-const CH_TYPES={Louange:{icon:'sun',col:'#D9861A',hint:'Chants joyeux, d’action de grâce et de célébration'},Adoration:{icon:'crown',col:'#6C3FC2',hint:'Chants lents, d’intimité et de contemplation'}};
-const deT=t=>t==='Adoration'?'d’adoration':'de louange';
+/* ================= Chants : simple liste de titres ================= */
+const CH_TYPES={Louange:{icon:'sun',col:'#D9861A'},Adoration:{icon:'crown',col:'#6C3FC2'}};
 const chOf=t=>(D.songs||[]).filter(c=>c.type===t).sort((a,b)=>a.o-b.o);
-function vChants(){
-  const T=st.chSeg||'Louange';const q=norm(st.chQ||'');const meta=CH_TYPES[T];
-  const seg=`<div class="chseg" role="tablist">${Object.keys(CH_TYPES).map(t=>`<button role="tab" data-chseg="${t}" aria-selected="${t===T}" style="--cat:${CH_TYPES[t].col}">${ic(CH_TYPES[t].icon)}<span>${t}</span><b>${chOf(t).length}</b></button>`).join('')}</div>`;
-  const list=chOf(T);const shown=q?list.filter(c=>norm(c.titre+' '+c.auteur+' '+c.note).includes(q)):list;
-  const other=T==='Louange'?'Adoration':'Louange';
-  const row=(c)=>{const i=list.indexOf(c);const ed=st.chEdit===c.id;
-    if(ed)return `<li class="chrow edit"><span class="nnum">${i+1}</span><div class="col" style="min-width:0">
-      <label class="f">Titre<input type="text" id="chEdT" value="${esc(c.titre)}"></label>
-      <div class="row"><label class="f">Auteur / chantre<input type="text" id="chEdA" value="${esc(c.auteur)}"></label><label class="f" style="flex:0 1 110px">Tonalité<input type="text" id="chEdK" value="${esc(c.ton)}" placeholder="ex. Sol"></label></div>
-      <label class="f">Lien (YouTube…)<input type="url" id="chEdL" value="${esc(c.lien)}" placeholder="https://"></label>
-      <label class="f">Note<input type="text" id="chEdN" value="${esc(c.note)}" placeholder="ex. 2 fois le refrain, conduit par la chorale"></label>
-      <div class="acts left"><button class="btn small primary" data-chsave="${esc(c.id)}">${ic('check')}Enregistrer</button><button class="btn small" data-chcancel>Annuler</button><button class="btn small" data-chswap="${esc(c.id)}">${ic('swap')}Passer en ${other.toLowerCase()}</button><button class="btn small" data-chdel="${esc(c.id)}">${ic('trash')}Supprimer</button></div></div></li>`;
-    return `<li class="chrow"><span class="nnum">${i+1}</span><div class="chtx"><b>${esc(c.titre)}</b>${c.auteur||c.ton||c.note?`<span class="muted">${[c.auteur,c.ton?'Ton : '+c.ton:'',c.note].filter(Boolean).map(esc).join(' · ')}</span>`:''}</div>
-     <div class="acts">${c.lien?`<a class="btn small icon" href="${esc(c.lien)}" target="_blank" rel="noopener" aria-label="Écouter ${esc(c.titre)}" title="Écouter">${ic('play')}</a>`:''}
-     ${q?'':`<button class="btn small icon" data-chmv="${esc(c.id)}" data-d="-1" aria-label="Monter" title="Monter" ${i?'':'disabled'}>${ic('up')}</button><button class="btn small icon" data-chmv="${esc(c.id)}" data-d="1" aria-label="Descendre" title="Descendre" ${i<list.length-1?'':'disabled'}>${ic('down')}</button>`}
-     <button class="btn small icon" data-chswap="${esc(c.id)}" aria-label="Passer en ${other}" title="Passer en ${other}">${ic('swap')}</button><button class="btn small icon" data-ched="${esc(c.id)}" aria-label="Modifier" title="Modifier">${ic('pencil')}</button></div></li>`};
-  return seg+`
-  <section class="chhead" style="--cat:${meta.col}"><span class="ticon">${ic(meta.icon)}</span><div><h3>Temps ${deT(T)}</h3><p class="muted">${meta.hint} · ${list.length} titre${list.length>1?'s':''}</p></div></section>
-  <div class="card"><div class="row"><label class="f" style="flex:3 1 240px">Nouveau titre ${deT(T)}<span class="inputmic"><input type="text" id="chNew" placeholder="ex. Tu es digne" autocomplete="off"><button class="btn small icon mic" id="chMic" aria-label="Dicter le titre" title="Dicter">${ic('mic')}</button></span></label>
-   <label class="f" style="flex:1 1 140px">Auteur / chantre (facultatif)<input type="text" id="chNewA"></label>
-   <button class="btn primary" id="chAdd" style="flex:0 0 auto">${ic('plus')}Ajouter</button></div>
-   <div class="acts left mt"><button class="btn small" id="chBulk">${ic('list')}Coller plusieurs titres</button><button class="btn small" id="chCopy">${ic('copy')}Copier les deux listes</button></div>
-   ${st.chBulk?`<label class="f mt">Un titre par ligne, ajoutés en ${T.toLowerCase()}<textarea id="chBulkTx" rows="5"></textarea></label><div class="acts left mt"><button class="btn primary small" id="chBulkGo">${ic('plus')}Ajouter les titres</button><button class="btn small" id="chBulkNo">Annuler</button></div>`:''}</div>
-  ${list.length>6?`<label class="f" style="margin-bottom:12px">Rechercher<input type="text" id="chQ" value="${esc(st.chQ||'')}" placeholder="Titre, chantre…"></label>`:''}
-  ${shown.length?`<section class="theme" style="--cat:${meta.col}"><ol class="subj chlist">${shown.map(row).join('')}</ol></section>`
-   :`<div class="empty">${q?'Aucun titre ne correspond.':`Aucun chant ${deT(T)} pour l’instant. Ajoutez votre premier titre ci-dessus.`}</div>`}`;
-}
-async function chReorder(T){const ids=chOf(T).map(c=>c.id);await act('reorderSongs',[ids])}
 function chNewId(){return 'CH-'+Date.now().toString(36).toUpperCase()+Math.floor(Math.random()*100)}
-function chAddTitles(titles,T,auteur){const L=chOf(T);let o=(L.length?L[L.length-1].o:0);const added=[];
-  titles.forEach(t=>{o+=10;const c={id:chNewId(),type:T,o,titre:capFirst(t),auteur:auteur||'',ton:'',lien:'',note:'',par:D.me};(D.songs=D.songs||[]).push(c);added.push(c)});
-  render(true);added.forEach(c=>act('saveSong',[c]).catch(()=>{}));return added.length}
-/* dictée simple dans un champ */
-function dictInto(id){if(!SR){toast(isIOS?"Touchez le champ, puis le micro du clavier de l'iPhone.":"La dictée n'est pas disponible dans ce navigateur. Utilisez Chrome ou le micro du clavier.");return}
-  const el=$('#'+id);if(!el)return;const r=new SR();r.lang='fr-FR';r.interimResults=true;r.continuous=false;const btn=$('#chMic');btn&&btn.classList.add('on');
-  r.onresult=e=>{let t='';for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;el.value=capFirst(t.trim())};
-  r.onend=()=>{btn&&btn.classList.remove('on');el.focus()};r.onerror=e=>{if(e.error==='not-allowed')toast("Autorisez l'accès au micro.")};
-  try{r.start()}catch(_){}}
-document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b||b.closest('#runner'))return;const d=b.dataset;const T=st.chSeg||'Louange';
+function vChants(){
+  const sec=T=>{const L=chOf(T);const m=CH_TYPES[T];
+    return `<section class="chsec" style="--cat:${m.col}"><h3 class="chh">${ic(m.icon)}${T}<span>${L.length}</span></h3>
+     <ol class="chsimple">${L.map((c,i)=>st.chEdit===c.id
+       ?`<li><span class="nnum">${i+1}</span><input type="text" id="chEdT" value="${esc(c.titre)}" aria-label="Titre"><button class="btn small icon" data-chsave="${esc(c.id)}" aria-label="Enregistrer" title="Enregistrer">${ic('check')}</button><button class="btn small icon" data-chdel="${esc(c.id)}" aria-label="Supprimer" title="Supprimer">${ic('trash')}</button></li>`
+       :`<li><span class="nnum">${i+1}</span><span class="cht">${esc(c.titre)}</span><button class="btn small icon" data-ched="${esc(c.id)}" aria-label="Modifier ${esc(c.titre)}" title="Modifier">${ic('pencil')}</button></li>`).join('')}</ol>
+     <form class="chadd" data-chform="${T}"><input type="text" id="chNew${T}" placeholder="Ajouter un titre ${T==='Adoration'?'d’adoration':'de louange'}" autocomplete="off" aria-label="Nouveau titre ${T==='Adoration'?'d’adoration':'de louange'}"><button class="btn primary small" type="submit">${ic('plus')}Ajouter</button></form></section>`};
+  return `<div class="chgrid">${sec('Louange')}${sec('Adoration')}</div>
+  <div class="acts left mt"><button class="btn small" id="chCopy">${ic('copy')}Copier les deux listes</button></div>`;
+}
+document.addEventListener('submit',e=>{const f=e.target;if(!f.dataset||!f.dataset.chform)return;e.preventDefault();const T=f.dataset.chform;const inp=f.querySelector('input');
+  const lines=inp.value.split(/\r?\n/).map(x=>x.replace(/^\s*\d+\s*[.)\-–:]\s*/,'').trim()).filter(Boolean);if(!lines.length)return;
+  const L=chOf(T);let o=L.length?L[L.length-1].o:0;const added=lines.map(t=>{o+=10;return {id:chNewId(),type:T,o,titre:capFirst(t),auteur:'',ton:'',lien:'',note:'',par:D.me}});
+  (D.songs=D.songs||[]).push(...added);render(true);setTimeout(()=>{const x=$('#chNew'+T);if(x)x.focus()},0);added.forEach(c=>act('saveSong',[c]).catch(()=>{}))});
+document.addEventListener('paste',e=>{const t=e.target;if(!t.id||!/^chNew(Louange|Adoration)$/.test(t.id))return;const txt=(e.clipboardData||window.clipboardData).getData('text');
+  if(/\n/.test(txt.trim())){e.preventDefault();t.value=txt;t.form.requestSubmit()}});
+document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b||b.closest('#runner'))return;const d=b.dataset;
   try{
-  if(d.chseg){st.chSeg=d.chseg;st.chEdit=null;st.chQ='';ls.set('apg_chseg',st.chSeg);render(true)}
-  else if(b.id==='chAdd'){const t=$('#chNew').value.trim();if(!t){toast('Écrivez ou dictez le titre.');return}chAddTitles([t],T,$('#chNewA').value.trim());toast(`Ajouté en ${T.toLowerCase()}.`);setTimeout(()=>$('#chNew')?.focus(),0)}
-  else if(b.id==='chMic')dictInto('chNew');
-  else if(b.id==='chBulk'){st.chBulk=!st.chBulk;render(true);setTimeout(()=>$('#chBulkTx')?.focus(),0)}
-  else if(b.id==='chBulkNo'){st.chBulk=false;render(true)}
-  else if(b.id==='chBulkGo'){const L=$('#chBulkTx').value.split(/\r?\n/).map(x=>x.replace(/^\s*\d+\s*[.)\-–:]\s*/,'').trim()).filter(Boolean);st.chBulk=false;const k=chAddTitles(L,T,'');toast(`${k} titre${k>1?'s':''} ajouté${k>1?'s':''} en ${T.toLowerCase()}.`)}
-  else if(b.id==='chCopy'){const t=['Louange','Adoration'].map(x=>{const L=chOf(x);return L.length?x.toUpperCase()+'\n'+L.map((c,i)=>`${i+1}. ${c.titre}${c.auteur?' ('+c.auteur+')':''}${c.ton?' – '+c.ton:''}`).join('\n'):''}).filter(Boolean).join('\n\n');
-    if(!t){toast('Aucun titre à copier.');return}try{await navigator.clipboard.writeText(t);toast('Listes copiées : collez-les dans WhatsApp ou un message.')}catch(_){prompt('Copiez les listes :',t)}}
-  else if(d.ched){st.chEdit=d.ched;render(true);setTimeout(()=>$('#chEdT')?.focus(),0)}
-  else if(d.chcancel!==undefined){st.chEdit=null;render(true)}
-  else if(d.chsave){const c=(D.songs||[]).find(x=>x.id===d.chsave);if(!c)return;const t=$('#chEdT').value.trim();if(!t){toast('Le titre ne peut pas être vide.');return}
-    Object.assign(c,{titre:t,auteur:$('#chEdA').value.trim(),ton:$('#chEdK').value.trim(),lien:$('#chEdL').value.trim(),note:$('#chEdN').value.trim()});st.chEdit=null;render(true);await act('saveSong',[c],'Chant modifié.')}
+  if(d.ched){st.chEdit=d.ched;render(true);setTimeout(()=>{const x=$('#chEdT');if(x){x.focus();x.select()}},0)}
+  else if(d.chsave){const c=(D.songs||[]).find(x=>x.id===d.chsave);const t=($('#chEdT')?.value||'').trim();st.chEdit=null;if(!c||!t){render(true);return}c.titre=t;render(true);await act('saveSong',[c],'Titre modifié.')}
   else if(d.chdel){const c=(D.songs||[]).find(x=>x.id===d.chdel);D.songs=(D.songs||[]).filter(x=>x.id!==d.chdel);st.chEdit=null;render(true);await act('deleteSong',[d.chdel],c?`« ${c.titre} » supprimé.`:'')}
-  else if(d.chswap){const c=(D.songs||[]).find(x=>x.id===d.chswap);if(!c)return;st.chEdit=null;const to=c.type==='Louange'?'Adoration':'Louange';const L=chOf(to);c.type=to;c.o=(L.length?L[L.length-1].o:0)+10;render(true);await act('saveSong',[c],`« ${c.titre} » passé en ${to.toLowerCase()}.`)}
-  else if(d.chmv){const L=chOf(T);const i=L.findIndex(x=>x.id===d.chmv);const j=i+(+d.d);if(i<0||j<0||j>=L.length)return;[L[i].o,L[j].o]=[L[j].o,L[i].o];if(L[i].o===L[j].o){L.forEach((c,k)=>c.o=(k+1)*10);[L[i].o,L[j].o]=[L[j].o,L[i].o]}render(true);await chReorder(T)}
+  else if(b.id==='chCopy'){const t=['Louange','Adoration'].map(x=>{const L=chOf(x);return L.length?x.toUpperCase()+'\n'+L.map((c,i)=>`${i+1}. ${c.titre}`).join('\n'):''}).filter(Boolean).join('\n\n');
+    if(!t){toast('Aucun titre à copier.');return}try{await navigator.clipboard.writeText(t);toast('Listes copiées.')}catch(_){prompt('Copiez les listes :',t)}}
   }catch(err){}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='chNew'){e.preventDefault();$('#chAdd')?.click()}});
-let chqh;document.addEventListener('input',e=>{if(e.target.id==='chQ'){clearTimeout(chqh);chqh=setTimeout(()=>{st.chQ=e.target.value;render(true);const x=$('#chQ');if(x){x.focus();x.setSelectionRange(x.value.length,x.value.length)}},250)}});
+document.addEventListener('keydown',e=>{if(e.target.id==='chEdT'){if(e.key==='Enter'){e.preventDefault();document.querySelector('[data-chsave]')?.click()}else if(e.key==='Escape'){st.chEdit=null;render(true)}}});
 
 /* ================= Verrou : mot de passe d'ouverture ================= */
 let unlocked=false,hiddenAt=0;
@@ -736,10 +700,90 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button');i
     catch(err){toast(err instanceof NetErr?'Changer le mot de passe demande internet.':err.message)}finally{b.disabled=false}}});
 document.addEventListener('change',e=>{if(e.target.id==='lockMin'){ls.set('apg_lockmin',+e.target.value);toast('Réglage enregistré sur cet appareil.')}});
 
+/* ================= Reformuler comme moi : apprendre de mes retouches ================= */
+const toks=t=>String(t||'').trim().split(/\s+/).filter(Boolean);
+const escRe=t=>t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const REF_RX=/\(\s*[^()]*\d+\s*[:.,]\s*\d+[^()]*\)/;
+function hunks(a,b){const n=a.length,m=b.length;if(!n||!m||n*m>60000)return null;
+  const L=Array.from({length:n+1},()=>new Uint16Array(m+1));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)L[i][j]=a[i]===b[j]?L[i+1][j+1]+1:Math.max(L[i+1][j],L[i][j+1]);
+  const H=[];let i=0,j=0,c=null;
+  while(i<n||j<m){if(i<n&&j<m&&a[i]===b[j]){if(c){H.push(c);c=null}i++;j++}
+    else{if(!c)c={i,from:[],to:[]};if(j<m&&(i===n||L[i][j+1]>=L[i+1][j])){c.to.push(b[j]);j++}else{c.from.push(a[i]);i++}}}
+  if(c)H.push(c);return H}
+/* Règles apprises à partir des paires (texte d'origine → texte retouché) */
+function learnRules(){
+  const R={};const add=(k,r,id)=>{if(!R[k])R[k]={...r,ids:new Set()};R[k].ids.add(id)};
+  (D.pairs||[]).forEach(([id,orig])=>{const x=D.subj[id];if(!x)return;const a=toks(orig),b=toks(x.text);const H=hunks(a,b);if(!H)return;
+    const changed=H.reduce((s,h)=>s+h.from.length,0);if(changed>Math.max(6,a.length*0.6))return;      // réécriture complète : rien de général à apprendre
+    H.forEach(h=>{const F=h.from.join(' '),T=h.to.join(' ');
+      if(REF_RX.test(F)&&!/\(/.test(T)){add('ref',{kind:'ref'},id);return}
+      if(h.i===0){add('s|'+F+'|'+T,{kind:'start',from:F,to:T},id);return}
+      if(h.i+h.from.length===a.length&&!F){add('e||'+T,{kind:'end',from:'',to:T},id);return}
+      if(!F){const p=a[h.i-1];add('w|'+p+'|'+p+' '+T,{kind:'word',from:p,to:p+' '+T},id);return}
+      if(h.from.length<=6)add('w|'+F+'|'+T,{kind:'word',from:F,to:T},id)})});
+  return Object.values(R).map(r=>({...r,support:r.ids.size})).sort((x,y)=>y.support-x.support||(x.kind==='start'?-1:1)).slice(0,30)}
+function applyRule(t,r){
+  if(r.kind==='ref')return t.replace(new RegExp('\\s*'+REF_RX.source,'g'),'').replace(/\s+([.,;:!?])/g,'$1').replace(/\s{2,}/g,' ').trim();
+  if(r.kind==='start'){if(!r.from)return t.startsWith(r.to)?t:r.to+' '+t;
+    const lo=t.toLowerCase(),f=r.from.toLowerCase();if(lo===f)return r.to;if(lo.startsWith(f+' '))return (r.to?r.to+' ':'')+t.slice(r.from.length).trimStart();return t}
+  if(r.kind==='end'){return t.endsWith(r.to)?t:t.replace(/\s+$/,'')+' '+r.to}
+  const re=new RegExp('(^|\\s)'+escRe(r.from)+'(?=\\s|$)','g');return t.replace(re,(m,p)=>p+r.to).replace(/\s{2,}/g,' ').trim()}
+function ruleLabel(r){if(r.kind==='ref')return 'Retirer les références bibliques entre parenthèses';
+  if(r.kind==='start')return r.from?`Au début : « ${r.from} » → « ${r.to||'(rien)'} »`:`Ajouter au début : « ${r.to} »`;
+  if(r.kind==='end')return `Ajouter à la fin : « ${r.to} »`;return `Remplacer « ${r.from} » par « ${r.to||'(rien)'} »`}
+function rwTargets(){const sc=st.rwScope||'all';return Object.values(D.subj).filter(x=>x.statut==='Actif'&&!x.aj&&(sc==='all'||(sc==='theme'?x.code===st.thCode:(byCode(x.code)||{}).d===st.thDay)))}
+function rwPlan(rules){const out=[];rwTargets().forEach(x=>{let t=x.text;rules.forEach(r=>{t=applyRule(t,r)});t=capFirst(t);if(t!==x.text)out.push({id:x.id,old:x.text,text:t})});return out}
+let RW=null;   // règles apprises, recalculées à l'ouverture du panneau
+function rwCard(){
+  const nP=(D.pairs||[]).length;
+  if(!st.rw)return `<div class="card rwc"><div class="row" style="align-items:center"><div style="flex:3 1 220px"><b class="ctitle">${ic('wand')}Reformuler comme moi</b><p class="muted" style="margin:4px 0 0">${nP?`${nP} sujet${nP>1?'s':''} retouché${nP>1?'s':''} par vous : l’application peut refaire la même chose sur les autres.`:'Retouchez quelques sujets avec le crayon : l’application apprendra votre façon de formuler.'}</p></div><button class="btn primary" id="rwOpen" style="flex:0 0 auto" ${nP?'':'disabled'}>${ic('wand')}Analyser mes retouches</button></div>
+   ${D.rewrite?`<p class="muted mt" style="margin-bottom:0">Dernière reformulation : ${esc(D.rewrite.date)}, ${D.rewrite.n} sujet(s). <button class="btn small" id="rwUndo">${ic('undo')}Annuler</button></p>`:''}</div>`;
+  if(!RW)RW=learnRules().map(r=>({...r,on:r.support>=2||r.kind==='start'||r.kind==='ref'}));
+  const on=RW.filter(r=>r.on);const plan=rwPlan(on);const ex=plan.slice(0,3);
+  return `<div class="card rwc open"><b class="ctitle">${ic('wand')}Reformuler comme moi</b>
+   <p class="muted mt">J’ai comparé vos ${nP} retouche${nP>1?'s':''} avec les textes d’origine. Voici ce que vous changez. Cochez ce qu’il faut refaire sur les sujets que vous n’avez pas encore ajustés (vos sujets retouchés ne sont jamais modifiés).</p>
+   ${RW.length?`<div class="rwlist">${RW.map((r,k)=>{const n=rwTargets().filter(x=>applyRule(x.text,r)!==x.text).length;
+     return `<label class="rwr"><input type="checkbox" data-rw="${k}" ${r.on?'checked':''}><span><b>${esc(ruleLabel(r))}</b><small class="muted">vu dans ${r.support} retouche${r.support>1?'s':''} · concerne ${n.toLocaleString('fr-FR')} sujet${n>1?'s':''}</small></span></label>`}).join('')}</div>`
+     :`<p class="muted note">Vos retouches sont des réécritures complètes : aucune règle générale n’en ressort. Retouchez de la même façon 2 ou 3 sujets (par ex. le même début de phrase) pour que l’application la reconnaisse.</p>`}
+   <div class="row mt"><label class="f">Où appliquer<select id="rwScope"><option value="all" ${st.rwScope==='all'||!st.rwScope?'selected':''}>Tous les thèmes</option><option value="day" ${st.rwScope==='day'?'selected':''}>Thèmes du ${esc(String(st.thDay).toLowerCase())}</option><option value="theme" ${st.rwScope==='theme'?'selected':''}>Ce thème seulement</option></select></label></div>
+   ${ex.length?`<div class="rwex"><b class="muted note">Aperçu (${plan.length.toLocaleString('fr-FR')} sujet${plan.length>1?'s':''} changeront)</b>${ex.map(c=>`<div class="rwpair"><s>${esc(c.old)}</s><span>${esc(c.text)}</span></div>`).join('')}</div>`:''}
+   <div class="acts left mt"><button class="btn primary" id="rwGo" ${plan.length?'':'disabled'}>${ic('check')}Appliquer à ${plan.length.toLocaleString('fr-FR')} sujet${plan.length>1?'s':''}</button><button class="btn" id="rwClose">Fermer</button>
+   ${D.rewrite?`<button class="btn" id="rwUndo">${ic('undo')}Annuler la dernière (${D.rewrite.n})</button>`:''}</div>
+   <p class="muted note">Chaque reformulation est gardée dans la feuille REFORMULATIONS (ancien et nouveau texte) et peut être annulée.</p></div>`;
+}
+document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.id==='rwOpen'){st.rw=true;RW=null;render(true)}
+  else if(b.id==='rwClose'){st.rw=false;render(true)}
+  else if(b.id==='rwGo'){const rules=(RW||[]).filter(r=>r.on);const plan=rwPlan(rules);if(!plan.length)return;b.disabled=true;
+    try{const r=await act('applyRewrite',[plan.map(c=>({id:c.id,text:c.text})),rules.map(ruleLabel).join(' ; ')]);
+      if(r&&r.n){plan.forEach(c=>{const x=D.subj[c.id];if(x)x.text=c.text});D.rewrite={lot:r.lot,date:r.date,n:r.n};reindex();st.rw=false;render(true);toast(`${r.n} sujet${r.n>1?'s':''} reformulé${r.n>1?'s':''}. Vous pouvez annuler.`)}}
+    catch(err){b.disabled=false;if(err instanceof NetErr)toast('La reformulation demande internet.')}}
+  else if(b.id==='rwUndo'){b.disabled=true;try{const r=await act('undoRewrite',[]);toast(`${r&&r.n||0} sujet(s) remis comme avant.`);D.rewrite=null;await load()}catch(err){b.disabled=false}}
+});
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset&&t.dataset.rw!==undefined&&RW){RW[+t.dataset.rw].on=t.checked;render(true)}else if(t.id==='rwScope'){st.rwScope=t.value;render(true)}});
+
+/* ================= Affichage : taille et type de police (réglage de chaque appareil) ================= */
+const FONTS={lexend:['Lexend (par défaut)',"'Lexend',system-ui,sans-serif"],sansation:['Sansation (si installée sur l’appareil)',"'Sansation','Lexend',system-ui,sans-serif"],
+ atkinson:['Atkinson (très lisible)',"'Atkinson Hyperlegible','Lexend',sans-serif"],nunito:['Nunito (arrondie)',"'Nunito','Lexend',sans-serif"],
+ georgia:['Georgia (classique, avec empattements)',"Georgia,'Times New Roman',serif"],arial:['Arial',"Arial,Helvetica,sans-serif"],verdana:['Verdana (large)',"Verdana,Geneva,sans-serif"]};
+const fontCfg=()=>{const f=ls.get('apg_font',{s:15,f:'sansation'});return {s:Math.max(12,Math.min(24,+f.s||15)),f:FONTS[f.f]?f.f:'sansation'}};
+function applyFont(){const f=fontCfg();document.documentElement.style.setProperty('--font',FONTS[f.f][1]);document.documentElement.style.fontSize=(16*f.s/15).toFixed(2)+'px'}
+applyFont();
+function fontCard(){const f=fontCfg();return `<div class="card"><b class="ctitle">${ic('pencil')}Affichage du texte</b>
+  <div class="row mt"><label class="f" style="flex:2 1 220px"><span>Taille du texte : <b id="fsVal">${f.s}</b> px</span><input type="range" id="fsSize" min="12" max="24" step="1" value="${f.s}"></label>
+  <label class="f" style="flex:2 1 220px">Type de police<select id="fsFam">${Object.entries(FONTS).map(([k,v])=>`<option value="${k}" ${k===f.f?'selected':''}>${esc(v[0])}</option>`).join('')}</select></label></div>
+  <div class="fontprev">1. Disons au Seigneur : fais que le feu de l’Esprit brûle sans s’éteindre sur notre maison.</div>
+  <div class="acts left mt"><button class="btn small" id="fsReset">${ic('undo')}Taille normale</button></div>
+  <p class="muted note">Réglage propre à cet appareil (téléphone et PC peuvent être différents).</p></div>`}
+document.addEventListener('input',e=>{if(e.target.id==='fsSize'){const f=fontCfg();f.s=+e.target.value;ls.set('apg_font',f);applyFont();const v=$('#fsVal');if(v)v.textContent=f.s}});
+document.addEventListener('change',e=>{if(e.target.id==='fsFam'){const f=fontCfg();f.f=e.target.value;ls.set('apg_font',f);applyFont();toast('Police appliquée sur cet appareil.')}});
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(b&&b.id==='fsReset'){const f=fontCfg();f.s=15;ls.set('apg_font',f);applyFont();render(true)}});
+
 /* ================= Réglages ================= */
 function vReglages(){
   const s=SET();const nb=Object.keys(D.subj).length;
-  return `<div class="card"><b class="ctitle">${ic('home')}Foyer</b><div class="row mt"><label class="f" style="flex:2 1 260px">Nom affiché en haut<input type="text" id="setFoyer" value="${esc(s.foyer||'')}"></label></div></div>
+  return `${fontCard()}<div class="card"><b class="ctitle">${ic('home')}Foyer</b><div class="row mt"><label class="f" style="flex:2 1 260px">Nom affiché en haut<input type="text" id="setFoyer" value="${esc(s.foyer||'')}"></label></div></div>
   <div class="card"><b class="ctitle">${ic('clock')}Rythme de prière</b><div class="row mt"><label class="f">Début de la rotation (lundi du lot 1)<input type="date" id="setDeb" value="${esc(s.debut||'')}"></label><label class="f">Secondes par sujet<input type="number" id="setSec" min="10" max="120" value="${num('secondes',30)}"></label><label class="f">Sujets par lot<input type="number" id="setLot" min="3" max="30" value="${LOT()}"></label><label class="f">Objectif par jour (min)<input type="number" id="setCible" min="0" max="300" value="${num('cible',0)}"></label></div>
    <p class="muted mt">Chaque semaine, chaque thème passe au lot suivant, puis revient au lot 1. Les flèches ‹ › d'un thème décalent son lot sur cet appareil seulement.</p><button class="btn" id="resetOff">Remettre tous les lots à la rotation normale</button></div>
   <div class="card"><b class="ctitle">${ic('flame')}Intention de chaque jour</b><p class="muted">Décochez « communs » pour les jours sans les thèmes communs.</p>
@@ -763,7 +807,7 @@ function vReglages(){
 
 /* ================= Rendu ================= */
 const TABS={jour:['Prière du jour','flame'],nuit:['Nuit de prière','moon'],chants:['Louange et adoration','music'],themes:['Thèmes et sujets','book'],exauces:['Sujets exaucés','star'],eglise:["Programme de l'église",'church'],reglages:['Réglages','sliders']};
-const KEEP=['pwOld','pwNew','pwNew2','chNew','chNewA','chBulkTx','chEdT','chEdA','chEdK','chEdL','chEdN','nTitre','nPaste','nEdTx','nTitreEd','setMe','cfUrl','cfKey','cfMe','edTx','tem','remp','temd','ceTx','ceTitre','ceCond','evTi','evS','evR','evTn','gName','gCatNew','libTx','libTem','catNew','setFoyer'];
+const KEEP=['chNewLouange','chNewAdoration','pwOld','pwNew','pwNew2','chNew','chNewA','chBulkTx','chEdT','chEdA','chEdK','chEdL','chEdN','nTitre','nPaste','nEdTx','nTitreEd','setMe','cfUrl','cfKey','cfMe','edTx','tem','remp','temd','ceTx','ceTitre','ceCond','evTi','evS','evR','evTn','gName','gCatNew','libTx','libTem','catNew','setFoyer'];
 function hdr(){$('#hdrSub').textContent=SET().foyer||'Notre foyer'}
 function render(force){
   if(!D.loaded)return;hdr();
@@ -797,7 +841,7 @@ document.addEventListener('click',async e=>{
     const created=await act('setStatut',[x.id,'Exaucé',{date:dt,note:nt,remplacement:rp,theme:t.t}],rp?'Gloire à Dieu ! Sujet exaucé et remplacé.':'Gloire à Dieu ! Sujet noté comme exaucé.');
     if(created){D.subj[created[0]]={id:created[0],code:created[1],text:created[2],prio:created[3],statut:created[4],ordre:created[5],dstatut:''};reindex();render(true)}}
   else if(d.edit){st.edit=st.edit===d.edit?null:d.edit;st.open=null;render(true);setTimeout(()=>$('#edTx')?.focus(),0)}
-  else if(d.edsave){const x=D.subj[d.edsave];if(!x)return;const nx=$('#edTx').value.trim(),np=$('#edPrio').checked?1:0;if(!nx){toast('Le sujet ne peut pas être vide.');return}st.edit=null;x.text=nx;x.prio=np;reindex();render(true);await act('editSubject',[x.id,nx,np],'Sujet modifié.')}
+  else if(d.edsave){const x=D.subj[d.edsave];if(!x)return;const nx=$('#edTx').value.trim(),np=$('#edPrio').checked?1:0;if(!nx){toast('Le sujet ne peut pas être vide.');return}st.edit=null;if(nx!==x.text&&!x.aj){if(!(D.pairs||[]).some(p=>p[0]===x.id))(D.pairs=D.pairs||[]).push([x.id,x.text]);x.aj=1;RW=null}x.text=nx;x.prio=np;reindex();render(true);await act('editSubject',[x.id,nx,np],'Sujet modifié.')}
   else if(d.ret){const x=D.subj[d.ret];if(!x)return;x.statut='Retiré';x.dstatut=iso(today);reindex();render(true);await act('setStatut',[x.id,'Retiré',{}],'Sujet retiré de la prière.')}
   else if(d.restore){const x=D.subj[d.restore];if(x){x.statut='Actif';x.dstatut=''}D.exauces=D.exauces.filter(s=>s.id!==d.restore);reindex();render(true);await act('setStatut',[d.restore,'Actif',{}],'Sujet remis en prière.')}
   else if(d.delex){D.exauces=D.exauces.filter(s=>s.id!==d.delex);render(true);await act('deleteExauce',[d.delex])}

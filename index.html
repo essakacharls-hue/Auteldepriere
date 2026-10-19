@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Autel de Prière">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Marcellus&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Marcellus&family=Atkinson+Hyperlegible:wght@400;700&family=Nunito:wght@400;600;700&display=swap">
 <style>
 /* Autel de Prière — « nuit royale et braise » : indigo profond, pourpre, et le feu (braise → or) réservé à la progression et aux actions */
 :root{
@@ -37,7 +37,7 @@
   --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 20px -10px rgba(0,0,0,.6); color-scheme:dark}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.55;margin:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:.9375rem;line-height:1.55;margin:0;-webkit-tap-highlight-color:transparent}
 button,select,input,textarea{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--or);outline-offset:2px}
 [hidden]{display:none!important}
@@ -336,6 +336,46 @@ body.locked nav.tabs{visibility:hidden}
 .lk-go{padding:13px;font-size:1rem;margin-top:4px}
 .lk-help{margin:0;font-size:.75rem;color:rgba(255,255,255,.55)}
 .lk-link{background:none;border:0;color:rgba(255,255,255,.6);text-decoration:underline;font-size:.78rem;cursor:pointer;padding:4px}
+</style>
+
+<style>
+/* ---------- Affichage réglable, chants simplifiés, reformulation ---------- */
+body,input,textarea,select,button{font-family:var(--font)}
+.fontprev{margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--surface2);border:1px solid var(--line)}
+input[type=range]{width:100%;accent-color:var(--ember)}
+.chgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.chsec{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);border-top:4px solid var(--cat);overflow:hidden}
+.chh{display:flex;align-items:center;gap:8px;margin:0;padding:12px 14px;font-family:var(--display);font-weight:400;font-size:1.3rem;color:var(--cat)}
+.chh .i{width:22px;height:22px}
+.chh span{margin-left:auto;font-family:var(--font);font-size:.75rem;font-weight:700;background:color-mix(in srgb,var(--cat) 14%,transparent);border-radius:999px;padding:2px 9px}
+ol.chsimple{list-style:none;margin:0;padding:0 0 4px}
+ol.chsimple li{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--line)}
+ol.chsimple li .cht{flex:1;min-width:0;font-weight:600}
+ol.chsimple li input{flex:1}
+ol.chsimple .nnum{background:color-mix(in srgb,var(--cat) 14%,transparent);color:var(--cat)}
+ol.chsimple li .btn.icon{opacity:.7}
+.chadd{display:flex;gap:8px;padding:10px 14px 14px;border-top:1px solid var(--line)}
+.chadd input{flex:1}
+.rwc.open{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--pourpre) 40%,transparent),var(--shadow)}
+.rwlist{display:grid;gap:8px;margin-top:10px}
+.rwr{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--surface2);border:1px solid var(--line);cursor:pointer}
+.rwr span{display:grid;gap:2px}
+.rwex{display:grid;gap:8px;margin-top:12px}
+.rwpair{display:grid;gap:3px;padding:10px 12px;border-radius:12px;background:var(--ok-soft);font-size:.9rem}
+.rwpair s{color:var(--muted)}
+</style>
+<style>
+/* actions des sujets en icônes : sur la même ligne, même sur téléphone */
+@media (max-width:560px){ol.subj:not(.chlist) li{grid-template-columns:auto 1fr auto}ol.subj:not(.chlist) li>.acts{grid-column:auto;margin:0;flex-wrap:nowrap;justify-content:flex-end}ol.subj li:has(.panel)>.acts{flex-wrap:nowrap}}
+</style>
+<style>
+/* en-tête et barre du bas : taille fixe, quel que soit le réglage du texte */
+header.top h1{font-size:20px}
+header.top .sub{font-size:12px}
+.sync{font-size:12px!important}
+.hbtn{font-size:12px}
+nav.tabs button{font-size:11px!important}
+@media (max-width:440px){header.top h1{font-size:17px}}
 </style>
 
 </head><body>
