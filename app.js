@@ -265,7 +265,7 @@ function vHero(){
   const ring=isToday?`<div class="ring" role="img" aria-label="${done} sujets priés sur ${tot}"><svg viewBox="0 0 92 92"><circle class="bg" cx="46" cy="46" r="40"/><circle class="fg" cx="46" cy="46" r="40" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-p)}"/></svg><div><b>${done}/${tot}</b><small>${done&&done===tot?'Accompli':'priés'}</small></div></div>`:'';
   return `<section class="hero"><div class="hero-top"><div><div class="hero-day">${JOURS7[k]}</div><div class="hero-date">${isToday?dd.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}):'Programme du '+JOURS7[k].toLowerCase()+' '+dd.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})}</div></div>${ring}</div>
    ${note?`<p class="hero-note">${ic('flame')}<span>${esc(note)}</span></p>`:''}
-   <div class="hero-stats"><span>${ic('layers')}${th.length} thèmes</span><span>${ic('list')}${tot} sujets</span><span class="${cible&&min>cible?'warn':''}">${ic('clock')}${Math.floor(min/60)?Math.floor(min/60)+' h ':''}${min%60} min${cible?' / '+cible:''}</span><span>${ic('calendar')}Semaine ${weekIndex()+1}</span></div>
+   <div class="hero-stats"><span>${ic('layers')}${th.length} thèmes</span><span>${ic('list')}${tot} sujets</span><span>${ic('clock')}${Math.floor(min/60)?Math.floor(min/60)+' h ':''}${min%60} min</span><span>${ic('calendar')}Semaine ${weekIndex()+1}</span></div>
    <div class="days" role="tablist">${DAYS.map((d,i)=>{const x=new Date(mon);x.setDate(x.getDate()+i);return `<button data-day="${d}" class="${d===st.day?'sel':''} ${todayDay()===d?'today':''}" aria-label="${JOURS7[i]}"><small>${DSHORT[d]}</small><b>${x.getDate()}</b></button>`}).join('')}</div></section>`;
 }
 function vJour(){
@@ -274,7 +274,7 @@ function vJour(){
   const jd=Object.values(D.journal);const complets=jd.filter(v=>v.t&&v.f>=v.t).length;
   return `<div class="opts"><span class="inl">${ic('star')} ${exaW} exaucement${exaW>1?'s':''} cette semaine</span><span class="inl">${ic('flame')} ${complets} jour${complets>1?'s':''} accompli${complets>1?'s':''} ce mois</span>
   <label><input type="checkbox" id="commDay" ${showCommun?'checked':''}> Thèmes communs ce jour-là</label></div>
-  ${cible&&min>cible?`<p class="muted note" style="color:var(--warn)">Ce jour dépasse l'objectif de ${cible} min. Réduisez la taille des lots ou les secondes par sujet dans les Réglages.</p>`:''}
+  ${st.day===todayDay()&&tot?`<div class="acts left" style="margin:0 0 14px"><button class="btn primary" id="runJour">${ic('play')}Commencer la séance (${Math.floor(min/60)?Math.floor(min/60)+' h ':''}${min%60} min)</button></div>`:''}
   ${th.length?th.map(themeCard).join(''):`<div class="empty">Aucun thème pour ce jour. Créez-en un dans l'onglet « Thèmes », ou déplacez-y un thème existant.</div>`}`;
 }
 
@@ -368,7 +368,7 @@ function vExauces(){
 }
 
 /* ================= Église ================= */
-function dayData(i){const v=D.week[i]||{};const items=(v.items||[]).slice();const n=Math.max(NBE(),items.length);while(items.length<n)items.push('');return{titre:v.titre||'',cond:v.cond||'',items}}
+function dayData(i){const v=D.week[i]||{};const items=(v.items||[]).slice();while(items.length&&!items[items.length-1])items.pop();return{titre:v.titre||'',cond:v.cond||'',items}}
 async function saveDayLocal(i,patch){const v={...dayData(i),...patch};D.week[i]=v;render();await act('saveDay',[st.week,i,v])}
 function genSubjects(i,count,exclude){const src=SET().sourceEglise||'SAMEDI';const th=TH().filter(t=>t.d===src&&subjects(t.c).length);if(!th.length)return null;
   const seen=new Set(exclude.map(norm));const out=[];const off=(weekIndex()*7+i)*7;const lists=th.map(t=>subjects(t.c));const total=lists.reduce((a,b)=>a+b.length,0);
@@ -377,14 +377,15 @@ function egliseWeek(){
   const mon=new Date(st.week+'T00:00');const i=st.ceDay;const d0=new Date(mon);d0.setDate(d0.getDate()+i);
   const v=dayData(i);const filled=v.items.filter(Boolean).length;const pk='apg_ce_'+st.week+'_'+i;const done=ls.get(pk,{});const nd=v.items.filter((x,k)=>x&&done[k]).length;
   const chips=JOURS7.map((j,k)=>{const dd=new Date(mon);dd.setDate(dd.getDate()+k);const n=dayData(k).items.filter(Boolean).length;return `<button data-ceday="${k}" class="${k===i?'sel':''} ${iso(dd)===iso(today)?'today':''}">${j.slice(0,3)} ${dd.getDate()}/${dd.getMonth()+1}${n?' · '+n:''}</button>`}).join('');
-  const li=v.items.map((x,k)=>{const ed=st.ceEdit===k;return `<li class="${x&&done[k]?'done':''}">${x?`<input type="checkbox" data-cedone="${k}" ${done[k]?'checked':''} aria-label="Prié">`:'<span></span>'}
+  const shown=v.items.concat(Array(10).fill(''));
+  const li=shown.map((x,k)=>{const ed=st.ceEdit===k;return `<li class="${x&&done[k]?'done':''}">${x?`<input type="checkbox" data-cedone="${k}" ${done[k]?'checked':''} aria-label="Prié">`:'<span></span>'}
      <div class="tx">${ed?`<textarea id="ceTx" rows="3">${esc(x)}</textarea>`:`<span class="n">${k+1}.</span>${x?esc(x):'<span class="muted" style="font-style:italic">Sujet à rédiger</span>'}`}</div>
      <div class="acts">${ed?`<button class="btn small primary" data-cesave="${k}">Enregistrer</button><button class="btn small" data-cecancel>Annuler</button>`:`<button class="btn small" data-ceedit="${k}">${ic('pencil')}${x?'Modifier':'Rédiger'}</button><button class="btn small icon" data-cegen1="${k}" aria-label="Générer" title="Générer">${ic('wand')}</button>${x?`<button class="btn small icon" data-ceclear="${k}" aria-label="Effacer" title="Effacer">${ic('trash')}</button>`:''}`}</div></li>`}).join('');
   return `<div class="row" style="margin-bottom:10px"><div class="acts left" style="flex:0 0 auto"><button class="btn" data-wkmove="-1">${ic('left')}Semaine précédente</button><button class="btn" data-wkmove="1">Semaine suivante${ic('right')}</button></div><p class="muted" style="margin:0">Semaine du ${fmt(st.week)}</p></div>
   <div class="days">${chips}</div>
   <div class="card"><div class="row"><label class="f" style="flex:2 1 220px">Thème ou activité du ${JOURS7[i].toLowerCase()} ${d0.getDate()}/${d0.getMonth()+1}<input type="text" id="ceTitre" value="${esc(v.titre)}" placeholder="ex. Prière de midi à l'assemblée"></label><label class="f">Conducteur<input type="text" id="ceCond" value="${esc(v.cond)}" placeholder="ex. Paul"></label></div></div>
-  <div class="summary s3"><div><b>${filled}/${v.items.length}</b><span>Sujets rédigés</span></div><div><b>${Math.round(filled*num('secondes',30)/60)} min</b><span>Durée estimée</span></div><div><b>${nd}/${filled}</b><span>Priés</span><div class="bar"><i style="width:${filled?nd/filled*100:0}%"></i></div></div></div>
-  <div class="acts left" style="margin-bottom:10px"><button class="btn primary" id="ceFill" ${v.items.length-filled?'':'disabled'}>${ic('wand')}Générer les ${v.items.length-filled} sujets vides</button>
+  <div class="summary s3"><div><b>${filled}</b><span>Sujets rédigés</span></div><div><b>${hm(filled*num('secondes',30)/60)}</b><span>Durée de la séance</span></div><div><b>${nd}/${filled}</b><span>Priés</span><div class="bar"><i style="width:${filled?nd/filled*100:0}%"></i></div></div></div>
+  <div class="acts left" style="margin-bottom:10px">${filled?`<button class="btn primary" id="runCe">${ic('play')}Commencer la séance</button>`:''}<span class="inl"><button class="btn" id="ceFill">${ic('wand')}Générer</button><input type="number" id="ceN" min="1" max="500" value="${ls.get('apg_cen',20)}" style="width:76px" aria-label="Nombre de sujets à générer"><span class="muted">sujets de plus</span></span>
    ${st.ceConfirm==='regen'?`<span class="muted">Remplacer les ${filled} sujets écrits ?</span><button class="btn" id="ceRegenOk">Oui, tout régénérer</button><button class="btn" id="ceNo">Non</button>`
    :st.ceConfirm==='clear'?`<span class="muted">Effacer les ${filled} sujets de ce jour ?</span><button class="btn" id="ceClearOk">Oui, tout effacer</button><button class="btn" id="ceNo">Non</button>`
    :`<button class="btn" id="ceRegen" ${filled?'':'disabled'}>Tout régénérer</button><button class="btn" id="ceClearAll" ${filled?'':'disabled'}>Tout effacer</button><button class="btn" id="ceCopyPrev">${ic('copy')}Reprendre la semaine précédente</button>`}</div>
@@ -530,19 +531,30 @@ function runList(n){return (n.items||[]).map((x,i)=>[i,x]).filter(([,x])=>x)}
 async function wake(){try{if('wakeLock' in navigator&&run.on)run.lock=await navigator.wakeLock.request('screen')}catch(_){}}
 function runOpen(){const n=curNight();if(!n)return;const L=runList(n);if(!L.length)return;dictStop(true);
   const pr=nPrie(n.id);let k=L.findIndex(([i])=>!pr[i]);if(k<0)k=0;
-  Object.assign(run,{on:true,k,start:Date.now(),paused:false,done:false,elapsed:0,list:L,id:n.id});
+  runStart({list:L,k,sec:+n.sec||30,title:n.titre||'Nuit de prière',end:'Nuit accomplie',mark:i=>markPrie(n,i)})}
+/* séance générique : list = [[numéro affiché (0 = 1er), texte, clé]] ; mark(clé) note le sujet comme prié */
+function runStart(o2){if(!o2.list.length)return;
+  Object.assign(run,{on:true,k:o2.k||0,start:Date.now(),paused:false,done:false,elapsed:0,list:o2.list,sec:o2.sec||30,title:o2.title,endTitle:o2.end||'Séance accomplie',mark:o2.mark||(()=>{}),after:o2.after||null});
   let o=$('#runner');if(!o){o=document.createElement('div');o.id='runner';o.setAttribute('role','dialog');o.setAttribute('aria-label','Nuit de prière en cours');document.body.appendChild(o)}
   o.hidden=false;document.body.style.overflow='hidden';wake();clearInterval(run.iv);run.iv=setInterval(runTick,250);runPaint(true)}
-function runClose(){run.on=false;clearInterval(run.iv);const o=$('#runner');if(o)o.hidden=true;document.body.style.overflow='';try{run.lock&&run.lock.release()}catch(_){}run.lock=null;render(true)}
-function runTick(){if(!run.on||run.paused)return;const n=NIGHT[run.id];const S=(+n.sec||30)*1000;const t=Date.now()-run.start;
-  if(t>=S){markPrie(n,run.list[run.k][0]);if(run.k<run.list.length-1){run.k++;run.start=Date.now();try{navigator.vibrate&&navigator.vibrate(60)}catch(_){}runPaint(true)}else{run.done=true;runPaint(true);clearInterval(run.iv)}return}
+function runClose(){run.on=false;if(run.after)try{run.after()}catch(_){}clearInterval(run.iv);const o=$('#runner');if(o)o.hidden=true;document.body.style.overflow='';try{run.lock&&run.lock.release()}catch(_){}run.lock=null;render(true)}
+function runTick(){if(!run.on||run.paused)return;const S=run.sec*1000;const t=Date.now()-run.start;
+  if(t>=S){run.mark(run.list[run.k][2]??run.list[run.k][0]);if(run.k<run.list.length-1){run.k++;run.start=Date.now();try{navigator.vibrate&&navigator.vibrate(60)}catch(_){}runPaint(true)}else{run.done=true;runPaint(true);clearInterval(run.iv)}return}
   runPaint(false)}
+/* séances « Prière du jour » et « Prières de la semaine » : même déroulé que la nuit */
+function runJour(){const N=LOT();const L=[];dayThemes(st.day).forEach(t=>{const a=subjects(t.c);const l=lotFor(t.c,a.length);a.slice(l*N,l*N+N).forEach(x=>L.push([L.length,x.text,x.id]))});
+  if(!L.length)return;let k=L.findIndex(x=>!prie[x[2]]);if(k<0)k=0;
+  runStart({list:L,k,sec:num('secondes',30),title:'Prière du jour',end:'Prière du jour accomplie',mark:id=>{prie[id]=true;ls.set('apg_prie_'+iso(today),prie);journalNow()}})}
+function runCe(){const i=st.ceDay;const v=dayData(i);const L=v.items.map((x,k)=>[k,x,k]).filter(x=>x[1]);if(!L.length)return;
+  const pk='apg_ce_'+st.week+'_'+i;const done=ls.get(pk,{});let k=L.findIndex(x=>!done[x[2]]);if(k<0)k=0;
+  runStart({list:L,k,sec:num('secondes',30),title:v.titre||('Prières du '+JOURS7[i].toLowerCase()),end:'Séance accomplie',mark:j=>{const d=ls.get(pk,{});d[j]=true;ls.set(pk,d)}})}
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='runJour')runJour();else if(b.id==='runCe')runCe()});
 function markPrie(n,i){const p=nPrie(n.id);p[i]=true;ls.set('apg_nprie_'+n.id,p)}
-function runPaint(full){const o=$('#runner');if(!o)return;const n=NIGHT[run.id];const S=(+n.sec||30)*1000;const L=run.list;const [idx,tx]=L[run.k];
+function runPaint(full){const o=$('#runner');if(!o)return;const S=run.sec*1000;const L=run.list;const [idx,tx]=L[run.k];
   const left=run.paused?run.pauseLeft:Math.max(0,S-(Date.now()-run.start));const C=2*Math.PI*54;const p=1-left/S;
   const restMin=((L.length-run.k-1)*S+left)/60000;
-  if(run.done){o.innerHTML=`<div class="rn-wrap rn-end">${ic('flame')}<h2>Nuit accomplie</h2><p>${L.length} sujets priés. Gloire à Dieu !</p><button class="btn primary" id="rnClose">${ic('check')}Terminer</button></div>`;return}
-  if(full){o.innerHTML=`<div class="rn-wrap"><div class="rn-top"><span>${esc(n.titre||'Nuit de prière')}</span><button class="hbtn" id="rnClose" aria-label="Quitter">${ic('x')}</button></div>
+  if(run.done){o.innerHTML=`<div class="rn-wrap rn-end">${ic('flame')}<h2>${esc(run.endTitle)}</h2><p>${L.length} sujets priés. Gloire à Dieu !</p><button class="btn primary" id="rnClose">${ic('check')}Terminer</button></div>`;return}
+  if(full){o.innerHTML=`<div class="rn-wrap"><div class="rn-top"><span>${esc(run.title)}</span><button class="hbtn" id="rnClose" aria-label="Quitter">${ic('x')}</button></div>
    <div class="rn-num">Sujet <b>${idx+1}</b> <span>· ${run.k+1} / ${L.length}</span></div>
    <p class="rn-tx">${esc(tx)}</p>
    <div class="rn-ring"><svg viewBox="0 0 120 120"><circle class="bg" cx="60" cy="60" r="54"/><circle class="fg" id="rnArc" cx="60" cy="60" r="54" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-p)}"/></svg><b id="rnSec">${Math.ceil(left/1000)}</b></div>
@@ -552,8 +564,8 @@ function runPaint(full){const o=$('#runner');if(!o)return;const n=NIGHT[run.id];
 }
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.closest('#runner'))return;
   if(b.id==='rnClose')runClose();
-  else if(b.id==='rnPause'){if(run.paused){run.start=Date.now()-((+NIGHT[run.id].sec||30)*1000-run.pauseLeft);run.paused=false}else{run.pauseLeft=Math.max(0,(+NIGHT[run.id].sec||30)*1000-(Date.now()-run.start));run.paused=true}runPaint(true)}
-  else if(b.id==='rnNext'){markPrie(NIGHT[run.id],run.list[run.k][0]);if(run.k<run.list.length-1){run.k++;run.start=Date.now();run.paused=false;runPaint(true)}else{run.done=true;runPaint(true)}}
+  else if(b.id==='rnPause'){if(run.paused){run.start=Date.now()-(run.sec*1000-run.pauseLeft);run.paused=false}else{run.pauseLeft=Math.max(0,run.sec*1000-(Date.now()-run.start));run.paused=true}runPaint(true)}
+  else if(b.id==='rnNext'){run.mark(run.list[run.k][2]??run.list[run.k][0]);if(run.k<run.list.length-1){run.k++;run.start=Date.now();run.paused=false;runPaint(true)}else{run.done=true;runPaint(true)}}
   else if(b.id==='rnPrev'){if(run.k>0)run.k--;run.start=Date.now();run.paused=false;runPaint(true)}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&run.on)wake()});
 
@@ -784,13 +796,13 @@ document.addEventListener('click',e=>{const b=e.target.closest('button');if(b&&b
 function vReglages(){
   const s=SET();const nb=Object.keys(D.subj).length;
   return `${fontCard()}<div class="card"><b class="ctitle">${ic('home')}Foyer</b><div class="row mt"><label class="f" style="flex:2 1 260px">Nom affiché en haut<input type="text" id="setFoyer" value="${esc(s.foyer||'')}"></label></div></div>
-  <div class="card"><b class="ctitle">${ic('clock')}Rythme de prière</b><div class="row mt"><label class="f">Début de la rotation (lundi du lot 1)<input type="date" id="setDeb" value="${esc(s.debut||'')}"></label><label class="f">Secondes par sujet<input type="number" id="setSec" min="10" max="120" value="${num('secondes',30)}"></label><label class="f">Sujets par lot<input type="number" id="setLot" min="3" max="30" value="${LOT()}"></label><label class="f">Objectif par jour (min)<input type="number" id="setCible" min="0" max="300" value="${num('cible',0)}"></label></div>
+  <div class="card"><b class="ctitle">${ic('clock')}Rythme de prière</b><div class="row mt"><label class="f">Début de la rotation (lundi du lot 1)<input type="date" id="setDeb" value="${esc(s.debut||'')}"></label><label class="f">Secondes par sujet<input type="number" id="setSec" min="10" max="120" value="${num('secondes',30)}"></label><label class="f">Sujets par lot<input type="number" id="setLot" min="3" max="30" value="${LOT()}"></label></div>
    <p class="muted mt">Chaque semaine, chaque thème passe au lot suivant, puis revient au lot 1. Les flèches ‹ › d'un thème décalent son lot sur cet appareil seulement.</p><button class="btn" id="resetOff">Remettre tous les lots à la rotation normale</button></div>
   <div class="card"><b class="ctitle">${ic('flame')}Intention de chaque jour</b><p class="muted">Décochez « communs » pour les jours sans les thèmes communs.</p>
    <div class="weekgrid">${DAYS.map(d=>`<label class="f">${d.charAt(0)+d.slice(1).toLowerCase()} <span style="font-weight:400"><input type="checkbox" data-comm="${d}" ${sansCommuns().includes(d)?'':'checked'}> communs</span><input type="text" data-note="${d}" value="${esc(s['note_'+d]||'')}" placeholder="ex. Combats pour le culte"></label>`).join('')}</div></div>
   <div class="card"><b class="ctitle">${ic('tag')}Catégories de thèmes</b><div class="chips mt">${catsList().map(c=>{const used=D.themes.filter(x=>x.k===c&&x.statut!=='Retiré').length;return `<span class="chip${c==='COMBATS'?' c':''}">${esc(c)} · ${used}${!used?` <button class="btn small" data-delcat="${esc(c)}" aria-label="Supprimer ${esc(c)}">×</button>`:''}</span>`}).join('')}</div>
    <div class="row mt"><label class="f" style="flex:2 1 220px">Nouvelle catégorie<input type="text" id="catNew" placeholder="ex. MALADES, VOYAGES"></label><button class="btn primary" id="catAdd" style="flex:0 0 auto">Ajouter</button></div></div>
-  <div class="card"><b class="ctitle">${ic('church')}Programme de l'église</b><div class="row mt"><label class="f">Sujets par jour (prières de la semaine)<input type="number" id="setNbE" min="10" max="300" value="${NBE()}"></label><label class="f">Jour d'où viennent les sujets générés<select id="setSrc">${DAYS.map(d=>`<option ${d===(s.sourceEglise||'SAMEDI')?'selected':''}>${d}</option>`).join('')}</select></label></div>
+  <div class="card"><b class="ctitle">${ic('church')}Programme de l'église</b><div class="row mt"><label class="f">Jour d'où viennent les sujets générés<select id="setSrc">${DAYS.map(d=>`<option ${d===(s.sourceEglise||'SAMEDI')?'selected':''}>${d}</option>`).join('')}</select></label></div>
    <p class="muted mt">Types d'activités : ${list_('evTypes').map(x=>`<span class="chip">${esc(x)} <button class="btn small" data-deltype="${esc(x)}" aria-label="Supprimer ${esc(x)}">×</button></span>`).join(' ')}</p></div>
   ${pwdCard()}
   <div class="card"><b class="ctitle">${ic('link')}Application et connexion</b>
@@ -880,7 +892,9 @@ document.addEventListener('click',async e=>{
   else if(d.cesave!==undefined){const k=+d.cesave;const v=dayData(st.ceDay);v.items[k]=$('#ceTx').value.trim();st.ceEdit=null;await saveDayLocal(st.ceDay,{items:v.items})}
   else if(d.ceclear!==undefined){const v=dayData(st.ceDay);v.items[+d.ceclear]='';await saveDayLocal(st.ceDay,{items:v.items})}
   else if(d.cegen1!==undefined){const k=+d.cegen1;const v=dayData(st.ceDay);const g=genSubjects(st.ceDay+k*13,1,v.items.filter(Boolean));if(!g||!g.length){toast('Aucun sujet disponible pour la génération.');return}v.items[k]=g[0];await saveDayLocal(st.ceDay,{items:v.items})}
-  else if(b.id==='ceFill'||b.id==='ceRegenOk'){const v=dayData(st.ceDay);if(b.id==='ceRegenOk')v.items=v.items.map(()=>'');st.ceConfirm=null;const empt=v.items.map((x,k)=>x?-1:k).filter(k=>k>=0);
+  else if(b.id==='ceFill'||b.id==='ceRegenOk'){const v=dayData(st.ceDay);const want=Math.max(1,Math.min(500,+($('#ceN')?.value)||20));ls.set('apg_cen',want);
+    if(b.id==='ceRegenOk'){const c=v.items.filter(Boolean).length;v.items=Array(c||want).fill('')}else{const holes=v.items.map((x,k)=>x?-1:k).filter(k=>k>=0).length;for(let q=holes;q<want;q++)v.items.push('')}
+    st.ceConfirm=null;const empt=v.items.map((x,k)=>x?-1:k).filter(k=>k>=0);
     const g=genSubjects(st.ceDay,empt.length,v.items.filter(Boolean));if(!g){toast('Aucun thème pour le jour choisi comme source (Réglages).');render(true);return}empt.forEach((k,j)=>{if(g[j])v.items[k]=g[j]});await saveDayLocal(st.ceDay,{items:v.items});toast(Math.min(g.length,empt.length)+' sujets générés.')}
   else if(b.id==='ceRegen'){st.ceConfirm='regen';render(true)}
   else if(b.id==='ceClearAll'){st.ceConfirm='clear';render(true)}
