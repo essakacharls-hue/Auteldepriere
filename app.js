@@ -8,7 +8,22 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const norm=s=>String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
 const iso=d=>{const z=new Date(d.getTime()-d.getTimezoneOffset()*6e4);return z.toISOString().slice(0,10)};
 let today=new Date();today.setHours(0,0,0,0);
-const fmt=s=>{if(!s)return'';const d=new Date(s+'T00:00');return isNaN(d)?s:d.toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})};
+const p2=n=>String(n).padStart(2,'0');
+/* formats imposés partout : date jj/mm/aa, heure 24 h */
+const jma=d=>{d=new Date(d);return isNaN(d)?'':p2(d.getDate())+'/'+p2(d.getMonth()+1)+'/'+String(d.getFullYear()).slice(-2)};
+const jm=d=>{d=new Date(d);return isNaN(d)?'':p2(d.getDate())+'/'+p2(d.getMonth()+1)};
+const mm2=d=>{d=new Date(d);return isNaN(d)?'':String(d.getFullYear()).slice(-2)};
+const hm24=d=>{d=new Date(d);return isNaN(d)?'':p2(d.getHours())+':'+p2(d.getMinutes())};
+const wjma=d=>{d=new Date(d);return isNaN(d)?'':['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'][d.getDay()]+' '+jma(d)};
+const stamp24=t=>{const m=String(t||'').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);return m?m[3]+'/'+m[2]+'/'+m[1].slice(2)+(m[4]?' '+m[4]+':'+m[5]:''):String(t||'')};
+
+/* saisie des dates en jj/mm/aa (au lieu du calendrier du téléphone) */
+function parseJMA(v){const m=String(v||'').trim().match(/^(\d{1,2})[\/.\-\s](\d{1,2})[\/.\-\s](\d{2}|\d{4})$/);if(!m)return'';
+  const y=m[3].length===2?2000+(+m[3]):+m[3];const d=new Date(y,+m[2]-1,+m[1]);if(d.getMonth()!==+m[2]-1||d.getDate()!==+m[1])return'';return iso(d)}
+const dv=id=>{const el=document.getElementById(id);if(!el)return'';const r=parseJMA(el.value);if(!r&&el.value.trim())toast('Date invalide : écrivez-la en jj/mm/aa, par ex. 21/10/26.');return r};
+document.addEventListener('input',e=>{const t=e.target;if(!t.dataset||t.dataset.date===undefined||e.inputType==='deleteContentBackward')return;
+  const dg=t.value.replace(/\D/g,'').slice(0,6);t.value=dg.length>4?dg.slice(0,2)+'/'+dg.slice(2,4)+'/'+dg.slice(4):dg.length>2?dg.slice(0,2)+'/'+dg.slice(2):dg});
+const fmt=s=>{if(!s)return'';const d=new Date(s+'T00:00');return isNaN(d)?s:jma(d)};
 function monday(d){const x=new Date(d);const k=(x.getDay()+6)%7;x.setDate(x.getDate()-k);x.setHours(0,0,0,0);return x}
 function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,2600)}
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
@@ -136,13 +151,13 @@ async function heartbeat(showToast){
   finally{hb.busy=false}}
 const lastSync=()=>ls.get('apg_lastsync',0);
 function markSync(){ls.set('apg_lastsync',Date.now());if(syncState)paintSync()}
-function syncShort(ts){if(!ts)return'';const d=new Date(ts),n=new Date();const hm=d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+function syncShort(ts){if(!ts)return'';const d=new Date(ts),n=new Date();const hm=hm24(d);
   const d0=new Date(d);d0.setHours(0,0,0,0);const n0=new Date(n);n0.setHours(0,0,0,0);const k=Math.round((n0-d0)/864e5);
-  return k===0?hm:k===1?'hier '+hm:d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' '+hm}
-function syncLong(ts){if(!ts)return'jamais';const d=new Date(ts);return d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+' à '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}
+  return k===0?hm:k===1?'hier '+hm:jma(d)+' '+hm}
+function syncLong(ts){if(!ts)return'jamais';const d=new Date(ts);return wjma(d)+' à '+hm24(d)}
 const lastWrite=()=>ls.get('apg_lastwrite',null);
 function syncDetail(){const w=lastWrite(),ts=lastSync();
-  return (hb.at?(hb.ok?`Connecté au serveur : vérifié à ${new Date(hb.at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})} (réponse en ${(hb.ms/1000).toFixed(1).replace('.',',')} s). `:`Serveur injoignable depuis ${new Date(hb.at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}. `):'')+(w&&w.ts?`Dernière synchronisation : ${w.par||'quelqu’un'}, ${syncLong(w.ts)}.`:'Aucune modification envoyée pour l’instant.')+(ts?` Cet appareil a vérifié la feuille ${syncLong(ts)}.`:'')}
+  return (hb.at?(hb.ok?`Connecté au serveur : vérifié à ${hm24(new Date(hb.at))} (réponse en ${(hb.ms/1000).toFixed(1).replace('.',',')} s). `:`Serveur injoignable depuis ${hm24(new Date(hb.at))}. `):'')+(w&&w.ts?`Dernière synchronisation : ${w.par||'quelqu’un'}, ${syncLong(w.ts)}.`:'Aucune modification envoyée pour l’instant.')+(ts?` Cet appareil a vérifié la feuille ${syncLong(ts)}.`:'')}
 function paintSync(){const s=$('#sync');const t=syncState;const busy=/…$/.test(t)||t==='Non connecté';const w=lastWrite();
   s.innerHTML=`<span>${esc(t)}</span>${!busy&&w&&w.ts?`<span class="st">${esc(syncShort(w.ts))} · <span class="who">${esc(w.par||'?')}</span></span>`:''}`;
   s.title=syncDetail();s.setAttribute('aria-label',t+'. '+syncDetail());
@@ -246,7 +261,7 @@ function subjLi(x,num,withCheck){
      <div class="acts left"><button class="btn primary" data-edsave="${esc(x.id)}">${ic('check')}Enregistrer la modification</button><button class="btn" data-cancel>Annuler</button></div></div>`:''}
    ${st.open===x.id?`<div class="panel"><label class="f">Témoignage (facultatif)<textarea id="tem" placeholder="Ce que Dieu a fait…"></textarea></label>
      <label class="f">Nouveau sujet pour le remplacer (facultatif)<textarea id="remp" placeholder="Ce pour quoi prier ensuite sur ce même point…"></textarea><span style="font-weight:400">Il prendra sa place en tête du lot 1 de ce thème.</span></label>
-     <div class="row"><label class="f">Date de l'exaucement<input type="date" id="temd" value="${iso(today)}"></label><div class="acts left" style="flex:0 0 auto"><button class="btn primary" data-conf="${esc(x.id)}">${ic('star')}Enregistrer comme exaucé</button><button class="btn" data-cancel>Annuler</button></div></div></div>`:''}
+     <div class="row"><label class="f">Date de l'exaucement<input type="text" inputmode="numeric" autocomplete="off" placeholder="jj/mm/aa" maxlength="8" data-date id="temd" value="${fmt(iso(today))}"></label><div class="acts left" style="flex:0 0 auto"><button class="btn primary" data-conf="${esc(x.id)}">${ic('star')}Enregistrer comme exaucé</button><button class="btn" data-cancel>Annuler</button></div></div></div>`:''}
   </li>`;
 }
 function themeCard(t){
@@ -263,7 +278,7 @@ function vHero(){
   const mon=monday(today);const k=DAYS.indexOf(st.day);const dd=new Date(mon);dd.setDate(dd.getDate()+k);
   const C=2*Math.PI*40;const p=isToday&&tot?done/tot:0;const note=SET()['note_'+st.day];
   const ring=isToday?`<div class="ring" role="img" aria-label="${done} sujets priés sur ${tot}"><svg viewBox="0 0 92 92"><circle class="bg" cx="46" cy="46" r="40"/><circle class="fg" cx="46" cy="46" r="40" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-p)}"/></svg><div><b>${done}/${tot}</b><small>${done&&done===tot?'Accompli':'priés'}</small></div></div>`:'';
-  return `<section class="hero"><div class="hero-top"><div><div class="hero-day">${JOURS7[k]}</div><div class="hero-date">${isToday?dd.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}):'Programme du '+JOURS7[k].toLowerCase()+' '+dd.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})}</div></div>${ring}</div>
+  return `<section class="hero"><div class="hero-top"><div><div class="hero-day">${JOURS7[k]}</div><div class="hero-date">${isToday?jma(dd):'Programme du '+JOURS7[k].toLowerCase()+' '+jm(dd)}</div></div>${ring}</div>
    ${note?`<p class="hero-note">${ic('flame')}<span>${esc(note)}</span></p>`:''}
    <div class="hero-stats"><span>${ic('layers')}${th.length} thèmes</span><span>${ic('list')}${tot} sujets</span><span>${ic('clock')}${Math.floor(min/60)?Math.floor(min/60)+' h ':''}${min%60} min</span><span>${ic('calendar')}Semaine ${weekIndex()+1}</span></div>
    <div class="days" role="tablist">${DAYS.map((d,i)=>{const x=new Date(mon);x.setDate(x.getDate()+i);return `<button data-day="${d}" class="${d===st.day?'sel':''} ${todayDay()===d?'today':''}" aria-label="${JOURS7[i]}"><small>${DSHORT[d]}</small><b>${x.getDate()}</b></button>`}).join('')}</div></section>`;
@@ -360,7 +375,7 @@ function vExauces(){
   const y=iso(today).slice(0,4),m=iso(today).slice(0,7);const by={};all.forEach(s=>{const k=s.theme||'Témoignage libre';by[k]=(by[k]||0)+1});
   const top=Object.entries(by).sort((a,b)=>b[1]-a[1]).slice(0,4);
   return `<div class="summary"><div><b>${all.length}</b><span>Exaucés en tout</span></div><div><b>${all.filter(s=>(s.date||'').startsWith(y)).length}</b><span>Cette année</span></div><div><b>${all.filter(s=>(s.date||'').startsWith(m)).length}</b><span>Ce mois-ci</span></div><div><span>Thèmes les plus exaucés</span><div class="muted">${top.length?top.map(([k,v])=>`${esc(k)} : ${v}`).join(' · '):'Aucun pour l’instant'}</div></div></div>
-  <div class="card"><b class="ctitle">${ic('heart')}Ajouter un témoignage d'exaucement</b><div class="row mt"><label class="f" style="flex:3 1 260px">Ce que Dieu a fait<input type="text" id="libTx" placeholder="ex. Guérison obtenue"></label><label class="f">Date<input type="date" id="libD" value="${iso(today)}"></label></div>
+  <div class="card"><b class="ctitle">${ic('heart')}Ajouter un témoignage d'exaucement</b><div class="row mt"><label class="f" style="flex:3 1 260px">Ce que Dieu a fait<input type="text" id="libTx" placeholder="ex. Guérison obtenue"></label><label class="f">Date<input type="text" inputmode="numeric" autocomplete="off" placeholder="jj/mm/aa" maxlength="8" data-date id="libD" value="${fmt(iso(today))}"></label></div>
    <label class="f mt">Détails (facultatif)<textarea id="libTem"></textarea></label><div class="mt"><button class="btn primary" id="libAdd">${ic('star')}Enregistrer le témoignage</button></div></div>
   ${all.length?`<div class="row" style="margin-bottom:10px"><label class="f">Année<select id="exYear"><option value="">Toutes</option>${years.map(v=>`<option ${v===st.exYear?'selected':''}>${v}</option>`).join('')}</select></label><label class="f" style="flex:2 1 240px">Rechercher<input type="text" id="exQ" value="${esc(st.exQ)}" placeholder="ex. guérison, examen…"></label></div>`:''}
   ${ex.length?`<div class="theme">${ex.map(s=>`<div class="ex"><div><span class="okbadge">${ic('check')}</span>${esc(s.text)}</div>${s.note?`<div class="tem">${esc(s.note)}</div>`:''}${s.remplace?`<div class="muted">Remplacé par : ${esc(s.remplace)}</div>`:''}<div class="meta"><span>${fmt(s.date)}</span><span>${esc(s.theme||'Témoignage libre')}</span>${String(s.id).startsWith('LIBRE')?`<button class="btn small" data-delex="${esc(s.id)}">${ic('trash')}Supprimer</button>`:`<button class="btn small" data-restore="${esc(s.id)}">${ic('undo')}Remettre en prière</button>`}</div></div>`).join('')}</div>`
@@ -376,14 +391,14 @@ function genSubjects(i,count,exclude){const src=SET().sourceEglise||'SAMEDI';con
 function egliseWeek(){
   const mon=new Date(st.week+'T00:00');const i=st.ceDay;const d0=new Date(mon);d0.setDate(d0.getDate()+i);
   const v=dayData(i);const filled=v.items.filter(Boolean).length;const pk='apg_ce_'+st.week+'_'+i;const done=ls.get(pk,{});const nd=v.items.filter((x,k)=>x&&done[k]).length;
-  const chips=JOURS7.map((j,k)=>{const dd=new Date(mon);dd.setDate(dd.getDate()+k);const n=dayData(k).items.filter(Boolean).length;return `<button data-ceday="${k}" class="${k===i?'sel':''} ${iso(dd)===iso(today)?'today':''}">${j.slice(0,3)} ${dd.getDate()}/${dd.getMonth()+1}${n?' · '+n:''}</button>`}).join('');
+  const chips=JOURS7.map((j,k)=>{const dd=new Date(mon);dd.setDate(dd.getDate()+k);const n=dayData(k).items.filter(Boolean).length;return `<button data-ceday="${k}" class="${k===i?'sel':''} ${iso(dd)===iso(today)?'today':''}">${j.slice(0,3)} ${jm(dd)}${n?' · '+n:''}</button>`}).join('');
   const shown=v.items.concat(Array(10).fill(''));
   const li=shown.map((x,k)=>{const ed=st.ceEdit===k;return `<li class="${x&&done[k]?'done':''}">${x?`<input type="checkbox" data-cedone="${k}" ${done[k]?'checked':''} aria-label="Prié">`:'<span></span>'}
      <div class="tx">${ed?`<textarea id="ceTx" rows="3">${esc(x)}</textarea>`:`<span class="n">${k+1}.</span>${x?esc(x):'<span class="muted" style="font-style:italic">Sujet à rédiger</span>'}`}</div>
      <div class="acts">${ed?`<button class="btn small primary" data-cesave="${k}">Enregistrer</button><button class="btn small" data-cecancel>Annuler</button>`:`<button class="btn small" data-ceedit="${k}">${ic('pencil')}${x?'Modifier':'Rédiger'}</button><button class="btn small icon" data-cegen1="${k}" aria-label="Générer" title="Générer">${ic('wand')}</button>${x?`<button class="btn small icon" data-ceclear="${k}" aria-label="Effacer" title="Effacer">${ic('trash')}</button>`:''}`}</div></li>`}).join('');
   return `<div class="row" style="margin-bottom:10px"><div class="acts left" style="flex:0 0 auto"><button class="btn" data-wkmove="-1">${ic('left')}Semaine précédente</button><button class="btn" data-wkmove="1">Semaine suivante${ic('right')}</button></div><p class="muted" style="margin:0">Semaine du ${fmt(st.week)}</p></div>
   <div class="days">${chips}</div>
-  <div class="card"><div class="row"><label class="f" style="flex:2 1 220px">Thème ou activité du ${JOURS7[i].toLowerCase()} ${d0.getDate()}/${d0.getMonth()+1}<input type="text" id="ceTitre" value="${esc(v.titre)}" placeholder="ex. Prière de midi à l'assemblée"></label><label class="f">Conducteur<input type="text" id="ceCond" value="${esc(v.cond)}" placeholder="ex. Paul"></label></div></div>
+  <div class="card"><div class="row"><label class="f" style="flex:2 1 220px">Thème ou activité du ${JOURS7[i].toLowerCase()} ${jma(d0)}<input type="text" id="ceTitre" value="${esc(v.titre)}" placeholder="ex. Prière de midi à l'assemblée"></label><label class="f">Conducteur<input type="text" id="ceCond" value="${esc(v.cond)}" placeholder="ex. Paul"></label></div></div>
   <div class="summary s3"><div><b>${filled}</b><span>Sujets rédigés</span></div><div><b>${hm(filled*num('secondes',30)/60)}</b><span>Durée de la séance</span></div><div><b>${nd}/${filled}</b><span>Priés</span><div class="bar"><i style="width:${filled?nd/filled*100:0}%"></i></div></div></div>
   <div class="acts left" style="margin-bottom:10px">${filled?`<button class="btn primary" id="runCe">${ic('play')}Commencer la séance</button>`:''}<span class="inl"><button class="btn" id="ceFill">${ic('wand')}Générer</button><input type="number" id="ceN" min="1" max="500" value="${ls.get('apg_cen',20)}" style="width:76px" aria-label="Nombre de sujets à générer"><span class="muted">sujets de plus</span></span>
    ${st.ceConfirm==='regen'?`<span class="muted">Remplacer les ${filled} sujets écrits ?</span><button class="btn" id="ceRegenOk">Oui, tout régénérer</button><button class="btn" id="ceNo">Non</button>`
@@ -397,11 +412,11 @@ function vEglise(){
   if(st.ceSeg==='sem')return seg+egliseWeek();
   const ev=D.prog.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));const td=iso(today);
   const fut=ev.filter(e=>e.date>=td),pas=ev.filter(e=>e.date<td).reverse().slice(0,15);
-  const row=e=>{const d=new Date(e.date+'T00:00');return `<div class="ev ${e.fait?'fait':''}"><div class="date">${isNaN(d)?'?':d.getDate()}<small>${isNaN(d)?'':d.toLocaleDateString('fr-FR',{month:'short'})}</small></div>
+  const row=e=>{const d=new Date(e.date+'T00:00');return `<div class="ev ${e.fait?'fait':''}"><div class="date">${isNaN(d)?'?':jm(d)}<small>${isNaN(d)?'':'/'+mm2(d)}</small></div>
     <div style="min-width:0"><div class="t"><b>${esc(e.titre)}</b> <span class="chip">${esc(e.type)}</span></div><div class="muted">${e.resp?'Responsable : '+esc(e.resp):''}</div>${e.sujets?`<div class="pre">${esc(e.sujets)}</div>`:''}</div>
     <div class="col"><button class="btn small ${e.fait?'':'ok'}" data-fait="${esc(e.id)}">${ic(e.fait?'undo':'check')}${e.fait?'Rouvrir':'Fait'}</button><button class="btn small icon" data-evedit="${esc(e.id)}" aria-label="Modifier" title="Modifier">${ic('pencil')}</button><button class="btn small icon" data-delev="${esc(e.id)}" aria-label="Supprimer" title="Supprimer">${ic('trash')}</button></div></div>`};
   const E=st.evEdit?D.prog.find(e=>e.id===st.evEdit):null;const types=[...new Set([...list_('evTypes'),E&&E.type].filter(Boolean))];
-  return seg+`<div class="card">${E?`<b>Modifier « ${esc(E.titre)} »</b>`:''}<div class="row mt"><label class="f">Date<input type="date" id="evD" value="${E?esc(E.date):td}"></label>
+  return seg+`<div class="card">${E?`<b>Modifier « ${esc(E.titre)} »</b>`:''}<div class="row mt"><label class="f">Date<input type="text" inputmode="numeric" autocomplete="off" placeholder="jj/mm/aa" maxlength="8" data-date id="evD" value="${fmt(E?esc(E.date):td)}"></label>
    <label class="f">Type<select id="evT">${types.map(x=>`<option ${E&&E.type===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label><label class="f">ou nouveau type<input type="text" id="evTn" placeholder="ex. Conférence"></label>
    <label class="f" style="flex:2 1 220px">Titre<input type="text" id="evTi" value="${E?esc(E.titre):''}" placeholder="ex. Veillée de combat du vendredi"></label><label class="f">Responsable<input type="text" id="evR" value="${E?esc(E.resp):''}"></label></div>
    <label class="f mt">Sujets (un par ligne)<textarea id="evS">${E?esc(E.sujets):''}</textarea></label><div class="acts left mt"><button class="btn primary" id="evAdd">${ic(E?'check':'plus')}${E?'Enregistrer les modifications':'Ajouter au programme'}</button>${E?'<button class="btn" id="evCancel">Annuler</button>':''}</div></div>
@@ -440,11 +455,11 @@ function nightsList(){
   const all=(D.nights||[]).slice();const td=iso(today);
   const fut=all.filter(n=>n.date>=td).sort((a,b)=>a.date.localeCompare(b.date)),pas=all.filter(n=>n.date<td).sort((a,b)=>b.date.localeCompare(a.date));
   const card=n=>{const d=new Date(n.date+'T00:00');const N=nCount(n);const p=Object.values(nPrie(n.id)).filter(Boolean).length;
-    return `<button class="ncard" data-nopen="${esc(n.id)}"><span class="date">${isNaN(d)?'?':d.getDate()}<small>${isNaN(d)?'':d.toLocaleDateString('fr-FR',{month:'short'})}</small></span>
-      <span class="nbody"><b>${esc(n.titre||'Nuit de prière')}</b><span class="muted">${isNaN(d)?'':d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</span>
+    return `<button class="ncard" data-nopen="${esc(n.id)}"><span class="date">${isNaN(d)?'?':jm(d)}<small>${isNaN(d)?'':'/'+mm2(d)}</small></span>
+      <span class="nbody"><b>${esc(n.titre||'Nuit de prière')}</b><span class="muted">${isNaN(d)?'':wjma(d)}</span>
       <span class="nbar"><i style="width:${n.nb?Math.min(100,p/n.nb*100):0}%"></i></span><span class="muted">${n.nb} sujet${n.nb>1?'s':''} · ${hm(n.nb*n.sec/60)} (${n.sec} s par sujet)${p?` · ${p} priés`:''}${n.par?` · ${esc(n.par)}`:''}</span></span>${ic('right')}</button>`};
   return `<div class="card"><b class="ctitle">${ic('moon')}Nouvelle nuit de prière</b>
-   <div class="row mt"><label class="f">Date de la nuit<input type="date" id="nDate" value="${td}"></label>
+   <div class="row mt"><label class="f">Date de la nuit<input type="text" inputmode="numeric" autocomplete="off" placeholder="jj/mm/aa" maxlength="8" data-date id="nDate" value="${fmt(td)}"></label>
    <label class="f" style="flex:2 1 220px">Intention (facultatif)<input type="text" id="nTitre" placeholder="ex. Nuit pour la famille"></label></div>
    <div class="row mt"><label class="f">Secondes par sujet<select id="nSec">${[15,20,30,45,60,90,120].map(v=>`<option ${v===30?'selected':''}>${v}</option>`).join('')}</select></label>
    <button class="btn primary" id="nCreate" style="flex:0 0 auto">${ic('plus')}Créer la nuit</button></div>
@@ -466,11 +481,11 @@ function nightView(n){
        :`<button class="btn small icon" data-nedit="${i}" aria-label="Écrire le sujet ${i+1}" title="Écrire">${ic('pencil')}</button><button class="btn small icon mic" data-nmic="${i}" aria-label="Dicter le sujet ${i+1}" title="Dicter">${ic('mic')}</button>`}</div></li>`}
   const hidden=N-filled-shownEmpty-(st.nEdit!=null&&!items[st.nEdit]&&shownEmpty<10?0:0);
   return `<div class="acts left" style="margin-bottom:12px"><button class="btn" data-nback>${ic('left')}Toutes les nuits</button></div>
-  <section class="nhero"><div class="nh-top"><div><div class="nh-date">${isNaN(d)?'':d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+  <section class="nhero"><div class="nh-top"><div><div class="nh-date">${isNaN(d)?'':wjma(d)}</div>
    <input type="text" id="nTitreEd" class="nh-title" value="${esc(n.titre)}" placeholder="Intention de la nuit" aria-label="Intention de la nuit"></div>
    <button class="btn primary nplay" data-nrun ${filled?'':'disabled'}>${ic('play')}Commencer la nuit</button></div>
    <div class="hero-stats" id="nStats">${nStatsHTML(n)}</div>
-   <div class="row" style="margin-top:12px"><label class="f">Date<input type="date" id="nDateEd" value="${esc(n.date)}"></label>   <label class="f">Secondes par sujet<select id="nSecEd">${[15,20,30,45,60,90,120].map(v=>`<option ${v===+n.sec?'selected':''}>${v}</option>`).join('')}</select></label></div></section>
+   <div class="row" style="margin-top:12px"><label class="f">Date<input type="text" inputmode="numeric" autocomplete="off" placeholder="jj/mm/aa" maxlength="8" data-date id="nDateEd" value="${fmt(esc(n.date))}"></label>   <label class="f">Secondes par sujet<select id="nSecEd">${[15,20,30,45,60,90,120].map(v=>`<option ${v===+n.sec?'selected':''}>${v}</option>`).join('')}</select></label></div></section>
   <div class="card dict${dict.on&&dict.row==null?' on':''}" id="dictCard"><div class="dict-top"><button class="micbig" id="dictBtn" aria-pressed="${dict.on&&dict.row==null}" aria-label="${dict.on?'Arrêter la dictée':'Dicter les sujets'}">${ic('mic')}</button>
    <div style="min-width:0;flex:1"><b>${dict.on&&dict.row==null?'Je vous écoute…':'Dicter les sujets'}</b><div class="muted" id="dictHint">${dict.on&&dict.row==null?`Sujet n° ${dictTarget(n)+1}. Dites « suivant » pour passer au sujet suivant.`:`Touchez le micro et parlez : chaque sujet se place au n° ${nextEmpty+1} puis à la suite.`}</div></div></div>
    <div class="dict-live" id="dictLive" ${dict.on?'':'hidden'}>${esc(dict.buf)} <i>${esc(dict.interim)}</i></div>
@@ -484,7 +499,7 @@ function nightView(n){
 </section>`;
 }
 function nStatsHTML(n){const f=nFilled(n);const pr=nPrie(n.id);const p=Object.keys(pr).filter(k=>pr[k]&&(n.items||[])[k]).length;
-  return `<span>${ic('list')}${f} sujet${f>1?'s':''}</span><span>${ic('clock')}Durée ${hm(f*n.sec/60)}</span><span>${ic('check')}${p} priés</span>${n.par?`<span>${ic('user')}${esc(n.par)}${n.modif?' · '+esc(n.modif.slice(11)):''}</span>`:''}`}
+  return `<span>${ic('list')}${f} sujet${f>1?'s':''}</span><span>${ic('clock')}Durée ${hm(f*n.sec/60)}</span><span>${ic('check')}${p} priés</span>${n.par?`<span>${ic('user')}${esc(n.par)}${n.modif?' · '+esc(stamp24(n.modif)):''}</span>`:''}`}
 function paintNightStats(){const n=curNight(),el=$('#nStats');if(n&&el)el.innerHTML=nStatsHTML(n)}
 function firstEmpty(n){const N=nCount(n);for(let i=0;i<N;i++)if(!(n.items||[])[i])return i;return N}
 
@@ -574,7 +589,7 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button');i
   try{
   if(d.nopen)openNight(d.nopen);
   else if(d.nback!==undefined){dictStop(true);st.nightId=null;st.nDelAsk=false;render(true)}
-  else if(b.id==='nCreate'){const date=$('#nDate').value||iso(today);const nn={id:'NUIT-'+Date.now().toString(36).toUpperCase(),date,titre:$('#nTitre').value.trim(),duree:0,sec:+$('#nSec').value||30,items:[],par:D.me};
+  else if(b.id==='nCreate'){const date=dv('nDate')||iso(today);const nn={id:'NUIT-'+Date.now().toString(36).toUpperCase(),date,titre:$('#nTitre').value.trim(),duree:0,sec:+$('#nSec').value||30,items:[],par:D.me};
     cacheNight(nn);upsertMeta(nn);st.nightId=nn.id;render(true);saveNightSoon(nn,true);toast('Nuit créée : écrivez ou dictez vos sujets, la durée se calcule toute seule.')}
   else if(d.nedit!==undefined){dictStop(true);st.nEdit=+d.nedit;render(true);setTimeout(()=>{const t=$('#nEdTx');if(t){t.focus();t.setSelectionRange(t.value.length,t.value.length)}},0)}
   else if(d.ncancel!==undefined){st.nEdit=null;render(true)}
@@ -602,7 +617,7 @@ document.addEventListener('change',e=>{const t=e.target;const n=curNight();
   if(t.id==='dictAuto'){dict.auto=t.checked;ls.set('apg_dict_auto',dict.auto)}
   else if(!n)return;
   else if(t.id==='nTitreEd'){n.titre=t.value.trim();saveNightSoon(n)}
-  else if(t.id==='nDateEd'&&t.value){n.date=t.value;saveNightSoon(n);render(true)}
+  else if(t.id==='nDateEd'&&dv('nDateEd')){n.date=dv('nDateEd');saveNightSoon(n);render(true)}
   else if(t.id==='nSecEd'){n.sec=+t.value||30;saveNightSoon(n);render(true)}
 });
 
@@ -750,7 +765,7 @@ let RW=null;   // règles apprises, recalculées à l'ouverture du panneau
 function rwCard(){
   const nP=(D.pairs||[]).length;
   if(!st.rw)return `<div class="card rwc"><div class="row" style="align-items:center"><div style="flex:3 1 220px"><b class="ctitle">${ic('wand')}Reformuler comme moi</b><p class="muted" style="margin:4px 0 0">${nP?`${nP} sujet${nP>1?'s':''} retouché${nP>1?'s':''} par vous : l’application peut refaire la même chose sur les autres.`:'Retouchez quelques sujets avec le crayon : l’application apprendra votre façon de formuler.'}</p></div><button class="btn primary" id="rwOpen" style="flex:0 0 auto" ${nP?'':'disabled'}>${ic('wand')}Analyser mes retouches</button></div>
-   ${D.rewrite?`<p class="muted mt" style="margin-bottom:0">Dernière reformulation : ${esc(D.rewrite.date)}, ${D.rewrite.n} sujet(s). <button class="btn small" id="rwUndo">${ic('undo')}Annuler</button></p>`:''}</div>`;
+   ${D.rewrite?`<p class="muted mt" style="margin-bottom:0">Dernière reformulation : ${esc(stamp24(D.rewrite.date))}, ${D.rewrite.n} sujet(s). <button class="btn small" id="rwUndo">${ic('undo')}Annuler</button></p>`:''}</div>`;
   if(!RW)RW=learnRules().map(r=>({...r,on:r.support>=2||r.kind==='start'||r.kind==='ref'}));
   const on=RW.filter(r=>r.on);const plan=rwPlan(on);const ex=plan.slice(0,3);
   return `<div class="card rwc open"><b class="ctitle">${ic('wand')}Reformuler comme moi</b>
@@ -796,7 +811,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('button');if(b&&b
 function vReglages(){
   const s=SET();const nb=Object.keys(D.subj).length;
   return `${fontCard()}<div class="card"><b class="ctitle">${ic('home')}Foyer</b><div class="row mt"><label class="f" style="flex:2 1 260px">Nom affiché en haut<input type="text" id="setFoyer" value="${esc(s.foyer||'')}"></label></div></div>
-  <div class="card"><b class="ctitle">${ic('clock')}Rythme de prière</b><div class="row mt"><label class="f">Début de la rotation (lundi du lot 1)<input type="date" id="setDeb" value="${esc(s.debut||'')}"></label><label class="f">Secondes par sujet<input type="number" id="setSec" min="10" max="120" value="${num('secondes',30)}"></label><label class="f">Sujets par lot<input type="number" id="setLot" min="3" max="30" value="${LOT()}"></label></div>
+  <div class="card"><b class="ctitle">${ic('clock')}Rythme de prière</b><div class="row mt"><label class="f">Début de la rotation (lundi du lot 1)<input type="text" inputmode="numeric" autocomplete="off" placeholder="jj/mm/aa" maxlength="8" data-date id="setDeb" value="${fmt(esc(s.debut||''))}"></label><label class="f">Secondes par sujet<input type="number" id="setSec" min="10" max="120" value="${num('secondes',30)}"></label><label class="f">Sujets par lot<input type="number" id="setLot" min="3" max="30" value="${LOT()}"></label></div>
    <p class="muted mt">Chaque semaine, chaque thème passe au lot suivant, puis revient au lot 1. Les flèches ‹ › d'un thème décalent son lot sur cet appareil seulement.</p><button class="btn" id="resetOff">Remettre tous les lots à la rotation normale</button></div>
   <div class="card"><b class="ctitle">${ic('flame')}Intention de chaque jour</b><p class="muted">Décochez « communs » pour les jours sans les thèmes communs.</p>
    <div class="weekgrid">${DAYS.map(d=>`<label class="f">${d.charAt(0)+d.slice(1).toLowerCase()} <span style="font-weight:400"><input type="checkbox" data-comm="${d}" ${sansCommuns().includes(d)?'':'checked'}> communs</span><input type="text" data-note="${d}" value="${esc(s['note_'+d]||'')}" placeholder="ex. Combats pour le culte"></label>`).join('')}</div></div>
@@ -807,7 +822,7 @@ function vReglages(){
   ${pwdCard()}
   <div class="card"><b class="ctitle">${ic('link')}Application et connexion</b>
    <div class="row mt"><label class="f" style="flex:2 1 220px">Prénom sur cet appareil (journal de prière)<input type="text" id="setMe" value="${esc((CFG&&CFG.me)||'')}"></label></div>
-   <p class="mt"><b>Connexion au serveur :</b> ${hb.at?(hb.ok?`<span style="color:var(--ok);font-weight:700">connecté</span>, vérifié à ${new Date(hb.at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`:`<span style="color:#D33F49;font-weight:700">injoignable</span> depuis ${new Date(hb.at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`):'pas encore vérifiée'} <button class="btn small" id="testConn">${ic('refresh')}Tester maintenant</button></p>
+   <p class="mt"><b>Connexion au serveur :</b> ${hb.at?(hb.ok?`<span style="color:var(--ok);font-weight:700">connecté</span>, vérifié à ${hm24(new Date(hb.at))}`:`<span style="color:#D33F49;font-weight:700">injoignable</span> depuis ${hm24(new Date(hb.at))}`):'pas encore vérifiée'} <button class="btn small" id="testConn">${ic('refresh')}Tester maintenant</button></p>
    <p><b>Dernière synchronisation :</b> ${lastWrite()&&lastWrite().ts?`${esc(lastWrite().par||'quelqu’un')}, ${esc(syncLong(lastWrite().ts))}`:'aucune modification envoyée pour l’instant'}</p>
    <p class="muted">Cet appareil a vérifié la feuille ${esc(syncLong(lastSync()))}.</p>
    <p class="muted">Serveur : …${esc(String(CFG&&CFG.url||'').slice(-18))} · ${outbox.length?outbox.length+' action(s) en attente d\'envoi':'aucune action en attente'} · ${standalone()?'application installée':'ouverte dans le navigateur'}.</p>
@@ -848,7 +863,7 @@ document.addEventListener('click',async e=>{
   else if(d.lot){lotOff[d.lot]=(lotOff[d.lot]||0)+(+d.d);ls.set('apg_lotoff',lotOff);render(true)}
   else if(d.exa){st.open=st.open===d.exa?null:d.exa;st.edit=null;render(true);setTimeout(()=>$('#tem')?.focus(),0)}
   else if(d.cancel!==undefined){st.open=null;st.edit=null;render(true)}
-  else if(d.conf){const[t,x]=findSubj(d.conf);if(!x)return;const rp=$('#remp').value.trim(),dt=$('#temd').value||iso(today),nt=$('#tem').value.trim();st.open=null;
+  else if(d.conf){const[t,x]=findSubj(d.conf);if(!x)return;const rp=$('#remp').value.trim(),dt=dv('temd')||iso(today),nt=$('#tem').value.trim();st.open=null;
     x.statut='Exaucé';x.dstatut=dt;D.exauces.push({date:dt,id:x.id,code:x.code,theme:t.t,text:x.text,note:nt,remplace:rp,par:D.me});reindex();render(true);
     const created=await act('setStatut',[x.id,'Exaucé',{date:dt,note:nt,remplacement:rp,theme:t.t}],rp?'Gloire à Dieu ! Sujet exaucé et remplacé.':'Gloire à Dieu ! Sujet noté comme exaucé.');
     if(created){D.subj[created[0]]={id:created[0],code:created[1],text:created[2],prio:created[3],statut:created[4],ordre:created[5],dstatut:''};reindex();render(true)}}
@@ -859,7 +874,7 @@ document.addEventListener('click',async e=>{
   else if(d.delex){D.exauces=D.exauces.filter(s=>s.id!==d.delex);render(true);await act('deleteExauce',[d.delex])}
   else if(b.id==='addBtn'){const tx=$('#newTx').value.trim();if(!tx){toast('Écrivez le sujet avant de l’ajouter.');return}const pr=$('#newPrio').checked?1:0;$('#newTx').value='';
     const r=await act('addSubjects',[[{code:st.thCode,text:tx,prio:pr}]],'Sujet ajouté.');(r||[]).forEach(s=>D.subj[s[0]]={id:s[0],code:s[1],text:s[2],prio:s[3],statut:s[4],ordre:s[5],dstatut:''});reindex();render(true)}
-  else if(b.id==='libAdd'){const tx=$('#libTx').value.trim();if(!tx){toast('Décrivez l’exaucement.');return}const dt=$('#libD').value||iso(today),nt=$('#libTem').value.trim();
+  else if(b.id==='libAdd'){const tx=$('#libTx').value.trim();if(!tx){toast('Décrivez l’exaucement.');return}const dt=dv('libD')||iso(today),nt=$('#libTem').value.trim();
     const id=await act('addTemoignage',[tx,dt,nt],'Témoignage enregistré.');D.exauces.push({date:dt,id,code:'',theme:'',text:tx,note:nt,remplace:'',par:D.me});render(true)}
   else if(b.id==='gNew'){st.gest='new';render(true);setTimeout(()=>$('#gName')?.focus(),0)}
   else if(b.id==='gEdit'){st.gest='edit';render(true)}
@@ -903,7 +918,7 @@ document.addEventListener('click',async e=>{
   else if(b.id==='ceCopyPrev'){const m=new Date(st.week+'T00:00');m.setDate(m.getDate()-7);const pw=await call('getWeek',iso(m));const pv=pw[st.ceDay];if(!pv||!(pv.items||[]).some(Boolean)){toast('Rien à reprendre la semaine précédente pour ce jour.');return}
     await saveDayLocal(st.ceDay,{titre:pv.titre||'',cond:pv.cond||'',items:pv.items});toast('Sujets repris de la semaine précédente.')}
   else if(b.id==='evAdd'){const ti=$('#evTi').value.trim();if(!ti){toast('Donnez un titre à l’activité.');return}let ty=$('#evTn').value.trim();if(ty){if(!list_('evTypes').includes(ty))saveSet({evTypes:[...list_('evTypes'),ty].join(',')})}else ty=$('#evT').value;
-    const prev=st.evEdit?D.prog.find(e=>e.id===st.evEdit):null;const ev={id:prev?prev.id:'',date:$('#evD').value||iso(today),type:ty,titre:ti,resp:$('#evR').value.trim(),sujets:$('#evS').value.trim(),fait:prev?prev.fait:false};
+    const prev=st.evEdit?D.prog.find(e=>e.id===st.evEdit):null;const ev={id:prev?prev.id:'',date:dv('evD')||iso(today),type:ty,titre:ti,resp:$('#evR').value.trim(),sujets:$('#evS').value.trim(),fait:prev?prev.fait:false};
     const id=await act('saveEvent',[ev],prev?'Activité modifiée.':'Activité ajoutée au programme.');ev.id=id;D.prog=D.prog.filter(e=>e.id!==id).concat([ev]);st.evEdit=null;render(true)}
   else if(d.evedit){st.evEdit=d.evedit;render(true);setTimeout(()=>$('#evTi')?.scrollIntoView({block:'center'}),0)}
   else if(b.id==='evCancel'){st.evEdit=null;render(true)}
@@ -926,7 +941,7 @@ document.addEventListener('change',async e=>{
   else if(t.id==='thCode'){st.thCode=t.value;st.gest=null;render(true)}
   else if(t.id==='exYear'){st.exYear=t.value;render(true)}
   else if(t.id==='setFoyer'){await saveSet({foyer:t.value.trim()})}
-  else if(t.id==='setDeb'&&t.value){await saveSet({debut:t.value})}
+  else if(t.id==='setDeb'&&dv('setDeb')){await saveSet({debut:dv('setDeb')})}
   else if(t.id==='setSec'){await saveSet({secondes:Math.max(10,Math.min(120,+t.value||30))})}
   else if(t.id==='setLot'){await saveSet({lot:Math.max(3,Math.min(30,+t.value||10))})}
   else if(t.id==='setCible'){await saveSet({cible:Math.max(0,Math.min(300,+t.value||0))})}
