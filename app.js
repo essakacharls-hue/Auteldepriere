@@ -491,13 +491,30 @@ function nightView(n){
    <div class="dict-live" id="dictLive" ${dict.on?'':'hidden'}>${esc(dict.buf)} <i>${esc(dict.interim)}</i></div>
    <div class="acts left mt">${dict.on?`<button class="btn primary small" id="dictOk">${ic('check')}Valider ce sujet</button><button class="btn small" id="dictUndo">${ic('undo')}Effacer la phrase</button>`:''}
    <label class="inl muted"><input type="checkbox" id="dictAuto" ${dict.auto?'checked':''}> Un sujet à chaque pause</label></div></div>
-  <div class="acts left" style="margin-bottom:12px"><button class="btn" id="nPasteBtn">${ic('list')}Coller plusieurs sujets</button><button class="btn" id="nCopy">${ic('copy')}Copier la liste</button><button class="btn" id="nDelNight">${ic('trash')}Supprimer la nuit</button></div>
+  <div class="acts left" style="margin-bottom:12px"><button class="btn" id="nGenBtn">${ic('wand')}Générer depuis un thème</button><button class="btn" id="nPasteBtn">${ic('list')}Coller plusieurs sujets</button><button class="btn" id="nCopy">${ic('copy')}Copier la liste</button><button class="btn" id="nDelNight">${ic('trash')}Supprimer la nuit</button></div>
+  ${st.nGen?nGenCard(n):''}
   ${st.nPaste?`<div class="card imp"><label class="f">Un sujet par ligne. Ils se placent à partir du n° ${nextEmpty+1}.<textarea id="nPaste" rows="6" placeholder="Disons au Seigneur : …\nBrisons …"></textarea></label><div class="acts left mt"><button class="btn primary" id="nPasteGo">${ic('plus')}Ajouter à la suite</button><button class="btn" id="nPasteNo">Annuler</button></div></div>`:''}
   ${st.nDelAsk?`<div class="card panel warm"><b>Supprimer « ${esc(n.titre||'cette nuit')} » et ses ${filled} sujets ?</b><div class="acts left"><button class="btn primary" id="nDelOk">Oui, supprimer</button><button class="btn" id="nDelNo">Non</button></div></div>`:''}
   <section class="theme" style="--cat:#4B2E91"><div class="thead"><span class="ticon">${ic('moon')}</span><div class="tmeta"><div class="code"><span class="chip">NUIT</span>${filled} sujet${filled>1?'s':''} · ${hm(filled*n.sec/60)}</div><h3>Sujets de la nuit</h3></div></div>
    <ol class="subj nsubj">${rows}</ol>
 </section>`;
 }
+function nGenCard(n){const ord=['TOUS LES JOURS',...DAYS];
+  const opts=ord.map(d=>{const L=TH().filter(t=>t.d===d);return L.length?`<optgroup label="${esc(d.charAt(0)+d.slice(1).toLowerCase())}">${L.map(t=>`<option value="${esc(t.c)}" ${st.ngTheme===t.c?'selected':''}>${esc(t.t)} (${subjects(t.c).length})</option>`).join('')}</optgroup>`:''}).join('');
+  return `<div class="card ngen"><b class="ctitle">${ic('wand')}Générer des sujets pour cette nuit</b>
+   <div class="row mt"><label class="f" style="flex:2 1 240px">Thème<select id="ngTheme"><option value="">— Choisir un thème —</option>${opts}</select></label>
+   <label class="f" style="flex:1 1 160px">ou un mot-clé<input type="text" id="ngKey" value="${esc(st.ngKey||'')}" placeholder="ex. santé, mariage"></label>
+   <label class="f" style="flex:0 1 110px">Combien<select id="ngN">${[[10,'10'],[20,'20'],[50,'50'],[100,'100'],[0,'Tous']].map(([v,l])=>`<option value="${v}" ${(st.ngN??20)==v?'selected':''}>${l}</option>`).join('')}</select></label></div>
+   <p class="muted note">Les sujets actifs du thème (ou contenant le mot-clé dans tous vos thèmes) se placent à la suite, sans doublon avec ceux déjà dans la nuit. La durée se recalcule toute seule.</p>
+   <div class="acts left"><button class="btn primary" id="ngGo">${ic('plus')}Ajouter à la nuit</button><button class="btn" id="ngNo">Fermer</button></div></div>`}
+function nGenerate(n){const code=$('#ngTheme').value,kw=norm($('#ngKey').value||''),N=+$('#ngN').value;st.ngTheme=code;st.ngKey=$('#ngKey').value;st.ngN=N;
+  let pool=[];if(code)pool=subjects(code).slice();else if(kw.length>=3)pool=Object.values(D.subj).filter(x=>x.statut==='Actif'&&norm(x.text).includes(kw)&&TH().some(t=>t.c===x.code));
+  else{toast('Choisissez un thème, ou écrivez un mot-clé d’au moins 3 lettres.');return}
+  const have=new Set((n.items||[]).filter(Boolean).map(norm));pool=pool.filter(x=>!have.has(norm(x.text)));
+  if(!pool.length){toast(code?'Tous les sujets de ce thème sont déjà dans la nuit.':'Aucun sujet ne contient ce mot-clé.');return}
+  const take=N?pool.slice(0,N):pool;n.items=(n.items||[]).slice();let i=0;
+  take.forEach(x=>{while(n.items[i])i++;n.items[i]=x.text;i++});
+  saveNightSoon(n);render(true);toast(`${take.length} sujet${take.length>1?'s':''} ajouté${take.length>1?'s':''} · durée ${hm(nDur(n))}.`)}
 function nStatsHTML(n){const f=nFilled(n);const pr=nPrie(n.id);const p=Object.keys(pr).filter(k=>pr[k]&&(n.items||[])[k]).length;
   return `<span>${ic('list')}${f} sujet${f>1?'s':''}</span><span>${ic('clock')}Durée ${hm(f*n.sec/60)}</span><span>${ic('check')}${p} priés</span>${n.par?`<span>${ic('user')}${esc(n.par)}${n.modif?' · '+esc(stamp24(n.modif)):''}</span>`:''}`}
 function paintNightStats(){const n=curNight(),el=$('#nStats');if(n&&el)el.innerHTML=nStatsHTML(n)}
@@ -609,6 +626,9 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button');i
   else if(b.id==='dictOk'){dictCommit();paintDict()}
   else if(b.id==='dictUndo'){dict.buf='';dict.interim='';paintDict()}
   else if(d.nall!==undefined){st.nAll=!st.nAll;render(true)}
+  else if(b.id==='nGenBtn'){st.nGen=!st.nGen;st.nPaste=false;render(true)}
+  else if(b.id==='ngNo'){st.nGen=false;render(true)}
+  else if(b.id==='ngGo'&&n){nGenerate(n)}
   else if(b.id==='nPasteBtn'){st.nPaste=!st.nPaste;render(true);setTimeout(()=>$('#nPaste')?.focus(),0)}
   else if(b.id==='nPasteNo'){st.nPaste=false;render(true)}
   else if(b.id==='nPasteGo'&&n){const lines=$('#nPaste').value.split(/\r?\n/).map(x=>x.replace(/^\s*\d+\s*[.)\-–:]\s*/,'').trim()).filter(Boolean);const N=nCount(n);n.items=(n.items||[]).slice();let k=0,i=0;
@@ -792,7 +812,7 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button');i
   if(b.id==='rwOpen'){st.rw=true;RW=null;render(true)}
   else if(b.id==='rwClose'){st.rw=false;render(true)}
   else if(b.id==='rwGo'){const rules=(RW||[]).filter(r=>r.on);const plan=rwPlan(rules);if(!plan.length)return;b.disabled=true;
-    try{const r=await act('applyRewrite',[plan.map(c=>({id:c.id,text:c.text})),rules.map(ruleLabel).join(' ; ')]);
+    try{const r=await act('applyRewrite',[plan.map(c=>({id:c.id,text:c.text,code:(D.subj[c.id]||{}).code})),rules.map(ruleLabel).join(' ; ')]);
       if(r&&r.n){plan.forEach(c=>{const x=D.subj[c.id];if(x)x.text=c.text});D.rewrite={lot:r.lot,date:r.date,n:r.n};reindex();st.rw=false;render(true);toast(`${r.n} sujet${r.n>1?'s':''} reformulé${r.n>1?'s':''}. Vous pouvez annuler.`)}}
     catch(err){b.disabled=false;if(err instanceof NetErr)toast('La reformulation demande internet.')}}
   else if(b.id==='rwUndo'){b.disabled=true;try{const r=await act('undoRewrite',[]);toast(`${r&&r.n||0} sujet(s) remis comme avant.`);D.rewrite=null;await load()}catch(err){b.disabled=false}}
@@ -843,7 +863,7 @@ function vReglages(){
 
 /* ================= Rendu ================= */
 const TABS={jour:['Prière du jour','flame'],nuit:['Nuit de prière','moon'],chants:['Louange et adoration','music'],themes:['Thèmes et sujets','book'],exauces:['Sujets exaucés','star'],eglise:["Programme de l'église",'church'],reglages:['Réglages','sliders']};
-const KEEP=['chNewLouange','chNewAdoration','pwOld','pwNew','pwNew2','chNew','chNewA','chBulkTx','chEdT','chEdA','chEdK','chEdL','chEdN','nTitre','nPaste','nEdTx','nTitreEd','setMe','cfUrl','cfKey','cfMe','edTx','tem','remp','temd','ceTx','ceTitre','ceCond','evTi','evS','evR','evTn','gName','gCatNew','libTx','libTem','catNew','setFoyer'];
+const KEEP=['ngKey','chNewLouange','chNewAdoration','pwOld','pwNew','pwNew2','chNew','chNewA','chBulkTx','chEdT','chEdA','chEdK','chEdL','chEdN','nTitre','nPaste','nEdTx','nTitreEd','setMe','cfUrl','cfKey','cfMe','edTx','tem','remp','temd','ceTx','ceTitre','ceCond','evTi','evS','evR','evTn','gName','gCatNew','libTx','libTem','catNew','setFoyer'];
 function hdr(){$('#hdrSub').textContent=SET().foyer||'Notre foyer'}
 function render(force){
   if(!D.loaded)return;hdr();
@@ -874,12 +894,12 @@ document.addEventListener('click',async e=>{
   else if(d.cancel!==undefined){st.open=null;st.edit=null;render(true)}
   else if(d.conf){const[t,x]=findSubj(d.conf);if(!x)return;const rp=$('#remp').value.trim(),dt=dv('temd')||iso(today),nt=$('#tem').value.trim();st.open=null;
     x.statut='Exaucé';x.dstatut=dt;D.exauces.push({date:dt,id:x.id,code:x.code,theme:t.t,text:x.text,note:nt,remplace:rp,par:D.me});reindex();render(true);
-    const created=await act('setStatut',[x.id,'Exaucé',{date:dt,note:nt,remplacement:rp,theme:t.t}],rp?'Gloire à Dieu ! Sujet exaucé et remplacé.':'Gloire à Dieu ! Sujet noté comme exaucé.');
+    const created=await act('setStatut',[x.id,'Exaucé',{date:dt,note:nt,remplacement:rp,theme:t.t,code:x.code}],rp?'Gloire à Dieu ! Sujet exaucé et remplacé.':'Gloire à Dieu ! Sujet noté comme exaucé.');
     if(created){D.subj[created[0]]={id:created[0],code:created[1],text:created[2],prio:created[3],statut:created[4],ordre:created[5],dstatut:''};reindex();render(true)}}
   else if(d.edit){st.edit=st.edit===d.edit?null:d.edit;st.open=null;render(true);setTimeout(()=>$('#edTx')?.focus(),0)}
-  else if(d.edsave){const x=D.subj[d.edsave];if(!x)return;const nx=$('#edTx').value.trim(),np=$('#edPrio').checked?1:0;if(!nx){toast('Le sujet ne peut pas être vide.');return}st.edit=null;if(nx!==x.text&&!x.aj){if(!(D.pairs||[]).some(p=>p[0]===x.id))(D.pairs=D.pairs||[]).push([x.id,x.text]);x.aj=1;RW=null}x.text=nx;x.prio=np;reindex();render(true);await act('editSubject',[x.id,nx,np],'Sujet modifié.')}
-  else if(d.ret){const x=D.subj[d.ret];if(!x)return;x.statut='Retiré';x.dstatut=iso(today);reindex();render(true);await act('setStatut',[x.id,'Retiré',{}],'Sujet retiré de la prière.')}
-  else if(d.restore){const x=D.subj[d.restore];if(x){x.statut='Actif';x.dstatut=''}D.exauces=D.exauces.filter(s=>s.id!==d.restore);reindex();render(true);await act('setStatut',[d.restore,'Actif',{}],'Sujet remis en prière.')}
+  else if(d.edsave){const x=D.subj[d.edsave];if(!x)return;const nx=$('#edTx').value.trim(),np=$('#edPrio').checked?1:0;if(!nx){toast('Le sujet ne peut pas être vide.');return}st.edit=null;if(nx!==x.text&&!x.aj){if(!(D.pairs||[]).some(p=>p[0]===x.id))(D.pairs=D.pairs||[]).push([x.id,x.text]);x.aj=1;RW=null}x.text=nx;x.prio=np;reindex();render(true);await act('editSubject',[x.id,nx,np,x.code],'Sujet modifié.')}
+  else if(d.ret){const x=D.subj[d.ret];if(!x)return;x.statut='Retiré';x.dstatut=iso(today);reindex();render(true);await act('setStatut',[x.id,'Retiré',{code:x.code}],'Sujet retiré de la prière.')}
+  else if(d.restore){const x=D.subj[d.restore];if(x){x.statut='Actif';x.dstatut=''}D.exauces=D.exauces.filter(s=>s.id!==d.restore);reindex();render(true);await act('setStatut',[d.restore,'Actif',{code:(D.subj[d.restore]||{}).code||((D.exauces||[]).find(e=>e.id===d.restore)||{}).code}],'Sujet remis en prière.')}
   else if(d.delex){D.exauces=D.exauces.filter(s=>s.id!==d.delex);render(true);await act('deleteExauce',[d.delex])}
   else if(b.id==='addBtn'){const tx=$('#newTx').value.trim();if(!tx){toast('Écrivez le sujet avant de l’ajouter.');return}const pr=$('#newPrio').checked?1:0;$('#newTx').value='';
     const r=await act('addSubjects',[[{code:st.thCode,text:tx,prio:pr}]],'Sujet ajouté.');(r||[]).forEach(s=>D.subj[s[0]]={id:s[0],code:s[1],text:s[2],prio:s[3],statut:s[4],ordre:s[5],dstatut:''});reindex();render(true)}
