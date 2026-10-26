@@ -290,7 +290,7 @@ function vJour(){
   return `<div class="opts"><span class="inl">${ic('star')} ${exaW} exaucement${exaW>1?'s':''} cette semaine</span><span class="inl">${ic('flame')} ${complets} jour${complets>1?'s':''} accompli${complets>1?'s':''} ce mois</span>
   <label><input type="checkbox" id="commDay" ${showCommun?'checked':''}> Thèmes communs ce jour-là</label></div>
   ${st.day===todayDay()&&tot?`<div class="acts left" style="margin:0 0 14px"><button class="btn primary" id="runJour">${ic('play')}Commencer la séance (${Math.floor(min/60)?Math.floor(min/60)+' h ':''}${min%60} min)</button>${(()=>{const ids=jourIds();const nd=ids.filter(id=>prie[id]).length;return (nd<ids.length?`<button class="btn ok" id="allJour">${ic('check')}Valider toute la séance</button>`:'')+(nd?`<button class="btn" id="noneJour">${ic('undo')}Tout décocher</button>`:'')})()}</div>`:''}
-  ${th.length?th.map(themeCard).join(''):`<div class="empty">Aucun thème pour ce jour. Créez-en un dans l'onglet « Thèmes », ou déplacez-y un thème existant.</div>`}`;
+  ${th.length?'<div class="tgrid">'+th.map(themeCard).join('')+'</div>':`<div class="empty">Aucun thème pour ce jour. Créez-en un dans l'onglet « Thèmes », ou déplacez-y un thème existant.</div>`}`;
 }
 
 /* ================= Thèmes et sujets ================= */
@@ -823,17 +823,18 @@ document.addEventListener('change',e=>{const t=e.target;if(t.dataset&&t.dataset.
 const FONTS={lexend:['Lexend (par défaut)',"'Lexend',system-ui,sans-serif"],sansation:['Sansation (si installée sur l’appareil)',"'Sansation','Lexend',system-ui,sans-serif"],
  atkinson:['Atkinson (très lisible)',"'Atkinson Hyperlegible','Lexend',sans-serif"],nunito:['Nunito (arrondie)',"'Nunito','Lexend',sans-serif"],
  georgia:['Georgia (classique, avec empattements)',"Georgia,'Times New Roman',serif"],arial:['Arial',"Arial,Helvetica,sans-serif"],verdana:['Verdana (large)',"Verdana,Geneva,sans-serif"]};
-const fontCfg=()=>{const f=ls.get('apg_font',{s:15,f:'sansation'});return {s:Math.max(12,Math.min(24,+f.s||15)),f:FONTS[f.f]?f.f:'sansation'}};
-function applyFont(){const f=fontCfg();document.documentElement.style.setProperty('--font',FONTS[f.f][1]);document.documentElement.style.fontSize=(16*f.s/15).toFixed(2)+'px'}
+const fontCfg=()=>{const f=ls.get('apg_font',{s:15,f:'sansation'});return {s:Math.max(12,Math.min(24,+f.s||15)),f:FONTS[f.f]?f.f:'sansation',w:f.w==='centre'?'centre':'plein'}};
+function applyFont(){const f=fontCfg();document.body&&document.body.classList.toggle('centre',f.w==='centre');document.documentElement.style.setProperty('--font',FONTS[f.f][1]);document.documentElement.style.fontSize=(16*f.s/15).toFixed(2)+'px'}
 applyFont();
 function fontCard(){const f=fontCfg();return `<div class="card"><b class="ctitle">${ic('pencil')}Affichage du texte</b>
   <div class="row mt"><label class="f" style="flex:2 1 220px"><span>Taille du texte : <b id="fsVal">${f.s}</b> px</span><input type="range" id="fsSize" min="12" max="24" step="1" value="${f.s}"></label>
   <label class="f" style="flex:2 1 220px">Type de police<select id="fsFam">${Object.entries(FONTS).map(([k,v])=>`<option value="${k}" ${k===f.f?'selected':''}>${esc(v[0])}</option>`).join('')}</select></label></div>
+  <div class="row mt"><label class="f" style="flex:2 1 220px">Largeur de l’affichage<select id="fsWidth"><option value="plein" ${f.w==='plein'?'selected':''}>Tout l’écran (conseillé)</option><option value="centre" ${f.w==='centre'?'selected':''}>Colonne centrée</option></select></label></div>
   <div class="fontprev">1. Disons au Seigneur : fais que le feu de l’Esprit brûle sans s’éteindre sur notre maison.</div>
   <div class="acts left mt"><button class="btn small" id="fsReset">${ic('undo')}Taille normale</button></div>
   <p class="muted note">Réglage propre à cet appareil (téléphone et PC peuvent être différents).</p></div>`}
 document.addEventListener('input',e=>{if(e.target.id==='fsSize'){const f=fontCfg();f.s=+e.target.value;ls.set('apg_font',f);applyFont();const v=$('#fsVal');if(v)v.textContent=f.s}});
-document.addEventListener('change',e=>{if(e.target.id==='fsFam'){const f=fontCfg();f.f=e.target.value;ls.set('apg_font',f);applyFont();toast('Police appliquée sur cet appareil.')}});
+document.addEventListener('change',e=>{if(e.target.id==='fsWidth'){const f=fontCfg();f.w=e.target.value;ls.set('apg_font',f);applyFont();toast('Largeur appliquée sur cet appareil.')}else if(e.target.id==='fsFam'){const f=fontCfg();f.f=e.target.value;ls.set('apg_font',f);applyFont();toast('Police appliquée sur cet appareil.')}});
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(b&&b.id==='fsReset'){const f=fontCfg();f.s=15;ls.set('apg_font',f);applyFont();render(true)}});
 
 /* ================= Réglages ================= */
