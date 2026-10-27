@@ -103,7 +103,7 @@ function catStyle(k){if(CATS[k])return CATS[k];let h=0;for(const ch of String(k)
 /* ================= Serveur (feuille Google via Apps Script) ================= */
 let CFG=ls.get('apg_cfg',null);
 class NetErr extends Error{}
-const QUEUE=['saveSong','deleteSong','reorderSongs','saveNight','deleteNight','setStatut','editSubject','logJournal','saveDay','saveSettings','addTemoignage','deleteExauce','deleteEvent'];
+const QUEUE=['deleteSubjects','saveSong','deleteSong','reorderSongs','saveNight','deleteNight','setStatut','editSubject','logJournal','saveDay','saveSettings','addTemoignage','deleteExauce','deleteEvent'];
 async function call(fn,...args){
   if(!CFG||!CFG.url)throw new Error("L'application n'est pas encore connectée.");
   let res;
@@ -245,7 +245,7 @@ window.addEventListener('offline',()=>{hb.ok=false;hb.at=Date.now();setSync(outb
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 
 /* ================= État d'affichage ================= */
-const st={tab:ls.get('apg_tab','jour'),day:todayDay(),thDay:'LUNDI',thCode:null,q:'',open:null,edit:null,gest:null,imp:null,
+const st={sel:{},selMode:false,tab:ls.get('apg_tab','jour'),day:todayDay(),thDay:'LUNDI',thCode:null,q:'',open:null,edit:null,gest:null,imp:null,
   exYear:'',exQ:'',chSeg:ls.get('apg_chseg','Louange'),chQ:'',chEdit:null,chBulk:false,ceSeg:'sem',ceDay:(today.getDay()+6)%7,ceEdit:null,ceConfirm:null,evEdit:null,week:iso(monday(today))};
 let prie=ls.get('apg_prie_'+iso(today),{});
 /* ouverture depuis le lanceur « Prière du jour » : #jour */
@@ -254,11 +254,14 @@ if(location.hash==='#jour'){st.tab='jour';st.day=todayDay();ls.set('apg_tab','jo
 /* ================= Prière du jour ================= */
 function subjLi(x,num,withCheck){
   const done=withCheck&&prie[x.id];
-  return `<li class="${done?'done':''}">${withCheck?`<input type="checkbox" data-prie="${esc(x.id)}" ${done?'checked':''} aria-label="Prié">`:'<span></span>'}
+  const sel=!withCheck&&st.selMode;const on=sel&&st.sel[x.id];
+  return `<li class="${done?'done':''}${on?' selon':''}">${withCheck?`<input type="checkbox" data-prie="${esc(x.id)}" ${done?'checked':''} aria-label="Prié">`:sel?`<input type="checkbox" class="selbox" data-sel="${esc(x.id)}" ${on?'checked':''} aria-label="Sélectionner ce sujet">`:'<span></span>'}
    <div class="tx"><span class="n">${num}.</span>${x.prio?'<span class="star" title="Prioritaire">★ </span>':''}${esc(x.text)}</div>
-   <div class="acts"><button class="btn small icon" data-exa="${esc(x.id)}" aria-label="Marquer ce sujet comme exaucé" title="Marquer comme exaucé">${ic('star')}</button><button class="btn small icon" data-edit="${esc(x.id)}" aria-label="Modifier" title="Modifier">${ic('pencil')}</button>${withCheck?'':`<button class="btn small icon" data-ret="${esc(x.id)}" aria-label="Retirer de la prière" title="Retirer de la prière">${ic('x')}</button>`}</div>
+   <div class="acts"><button class="btn small icon" data-exa="${esc(x.id)}" aria-label="Marquer ce sujet comme exaucé" title="Marquer comme exaucé">${ic('star')}</button><button class="btn small icon" data-edit="${esc(x.id)}" aria-label="Modifier" title="Modifier">${ic('pencil')}</button><button class="btn small icon" data-askdel="${esc(x.id)}" aria-label="Supprimer ou retirer" title="Supprimer ou retirer">${ic('trash')}</button></div>
    ${st.edit===x.id?`<div class="panel warm"><label class="f">Modifier le sujet<textarea id="edTx">${esc(x.text)}</textarea></label><label class="inl"><input type="checkbox" id="edPrio" ${x.prio?'checked':''}> Prioritaire ★ (en tête du lot 1)</label>
-     <div class="acts left"><button class="btn primary" data-edsave="${esc(x.id)}">${ic('check')}Enregistrer la modification</button><button class="btn" data-cancel>Annuler</button></div></div>`:''}
+     <div class="acts left"><button class="btn primary" data-edsave="${esc(x.id)}">${ic('check')}Enregistrer la modification</button><button class="btn" data-cancel>Annuler</button><button class="btn" data-askdel="${esc(x.id)}">${ic('trash')}Supprimer</button></div></div>`:''}
+   ${st.del===x.id?`<div class="panel warm delpanel"><b>Que faire de ce sujet ?</b><p class="muted" style="margin:4px 0 8px">« Retirer » le sort de la prière mais le garde dans la feuille (il pourra être remis). « Supprimer » efface sa ligne de la feuille du thème.</p>
+     <div class="acts left"><button class="btn" data-ret="${esc(x.id)}">${ic('undo')}Retirer de la prière</button><button class="btn danger" data-delsubj="${esc(x.id)}">${ic('trash')}Supprimer définitivement</button><button class="btn" data-cancel>Annuler</button></div></div>`:''}
    ${st.open===x.id?`<div class="panel"><label class="f">Témoignage (facultatif)<textarea id="tem" placeholder="Ce que Dieu a fait…"></textarea></label>
      <label class="f">Nouveau sujet pour le remplacer (facultatif)<textarea id="remp" placeholder="Ce pour quoi prier ensuite sur ce même point…"></textarea><span style="font-weight:400">Il prendra sa place en tête du lot 1 de ce thème.</span></label>
      <div class="row"><label class="f">Date de l'exaucement<input type="text" inputmode="numeric" autocomplete="off" placeholder="jj/mm/aa" maxlength="8" data-date id="temd" value="${fmt(iso(today))}"></label><div class="acts left" style="flex:0 0 auto"><button class="btn primary" data-conf="${esc(x.id)}">${ic('star')}Enregistrer comme exaucé</button><button class="btn" data-cancel>Annuler</button></div></div></div>`:''}
@@ -314,28 +317,32 @@ function cleanLine(s){return String(s??'').replace(/^\s*(\d+[\.\)]|[-•*–▪�
 function matchTheme(v,partial){if(v==null||v==='')return null;const n=norm(v);const T=TH();
   const a=T.find(t=>norm(t.c)===n);if(a)return a.c;const b=T.find(t=>norm(t.t)===n);if(b)return b.c;
   if(!partial)return null;const p=T.find(t=>n.length>3&&n.length<90&&(norm(t.t).includes(n)||n.includes(norm(t.t))));return p?p.c:null}
+const isNote=s=>/^\s*(ℹ|#|\/\/|exemple\s*:)/i.test(String(s??''));
+const AIDE_RX=/lisez|mode d|guide|codes|liste des th|aide/i;
 async function parseFile(f){
-  const name=f.name.toLowerCase();const rows=[];
+  const name=f.name.toLowerCase();const rows=[];const unknown=new Set();
   if(name.endsWith('.docx')){
     const m=await loadLib('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js','mammoth');
     const r=await m.extractRawText({arrayBuffer:await f.arrayBuffer()});let cur=null;
-    r.value.split(/\n+/).forEach(l=>{const raw=l.trim();if(!raw)return;
+    r.value.split(/\n+/).forEach(l=>{const raw=l.trim();if(!raw||isNote(raw))return;
+      const hc=raw.match(/^([A-Z]{3}-\d{1,3})\b/);if(hc&&raw.length<90&&!/[.!?]$/.test(raw)&&!matchTheme(hc[1])){unknown.add(raw);cur=null;return}
       const th=matchTheme(raw.replace(/^[A-Z]{3}-\d{2}\s+/,'').replace(/^\[[^\]]*\]\s*/,''),true)||matchTheme(raw.split(/\s+/)[0]);
       if(th&&raw.length<90&&!/[.!?]$/.test(raw.replace(/\([^)]*\)\.?$/,'').trim())){cur=th;return}
-      const tx=cleanLine(raw);if(tx.length>=8&&!/^lot\s*\d+$/i.test(tx))rows.push({text:tx,code:cur})});
+      const tx=cleanLine(raw);if(tx.length>=8&&!/^lot\s*\d+$/i.test(tx))rows.push({text:tx,code:cur,prio:/^\s*★/.test(raw)?true:null})});
+    if(rows.some(r=>r.prio))rows.forEach(r=>{if(r.prio==null)r.prio=false});   // ★ utilisé dans le fichier : seuls ces sujets sont prioritaires
   }else if(/\.(xlsx|xlsm|xls|csv)$/.test(name)){
     const X=await loadLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js','XLSX');
     const wb=X.read(await f.arrayBuffer(),{type:'array'});
-    wb.SheetNames.forEach(sn=>{const data=X.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});if(!data.length)return;
+    wb.SheetNames.forEach(sn=>{if(AIDE_RX.test(sn))return;const data=X.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});if(!data.length)return;
       let hi=-1,cS=-1,cT=-1,cP=-1;
       for(let i=0;i<Math.min(5,data.length);i++){data[i].forEach((v,j)=>{const n=norm(v);if(/sujet|priere|texte/.test(n)&&cS<0){cS=j;hi=i}if(/theme|code/.test(n)&&cT<0){cT=j;hi=i}if(/priorit/.test(n)&&cP<0)cP=j});if(cS>=0)break}
       const sheetTheme=matchTheme(sn,true);
-      data.slice(hi+1).forEach(r=>{let tx=cS>=0?r[cS]:r.reduce((a,v)=>String(v).length>String(a).length?v:a,'');tx=cleanLine(tx);if(tx.length<8)return;
-        let code=cT>=0?matchTheme(r[cT],true):null;if(!code&&cT<0)code=r.map(v=>matchTheme(v)).find(Boolean)||null;if(!code)code=sheetTheme;
+      data.slice(hi+1).forEach(r=>{let tx=cS>=0?r[cS]:r.reduce((a,v)=>String(v).length>String(a).length?v:a,'');if(isNote(tx))return;tx=cleanLine(tx);if(tx.length<8)return;
+        let code=cT>=0?matchTheme(r[cT],true):null;if(cT>=0&&!code&&String(r[cT]).trim())unknown.add(String(r[cT]).trim());if(!code&&cT<0)code=r.map(v=>matchTheme(v)).find(Boolean)||null;if(!code)code=sheetTheme;
         const pr=cP>=0?/^(oui|1|x|precision|★|vrai|true)/i.test(norm(r[cP])):null;rows.push({text:tx,code,prio:pr})})});
   }else if(name.endsWith('.txt')){(await f.text()).split(/\n+/).forEach(l=>{const tx=cleanLine(l);if(tx.length>=8)rows.push({text:tx,code:null})})}
   else throw new Error('format');
-  return rows;
+  rows.unknown=[...unknown];return rows;
 }
 const impTarget=r=>r.code||st.imp.def;
 function markDups(){const I=st.imp;const ex={};I.rows.forEach(r=>{const c=impTarget(r);if(!ex[c])ex[c]=new Set(subjects(c).map(x=>norm(x.text)));const k=norm(r.text);r.dup=ex[c].has(k);ex[c].add(k)})}
@@ -346,22 +353,43 @@ function impCard(){
   if(I.loading)return `<div class="card imp">Lecture de « ${esc(I.name)} »…</div>`;
   const ok=I.rows.filter(r=>!r.dup);const dups=I.rows.length-ok.length;const auto=I.rows.filter(r=>r.code).length;
   return `<div class="card imp"><b>Import de « ${esc(I.name)} »</b><p class="muted">${I.rows.length} sujet(s) lu(s) · ${auto} rangé(s) automatiquement${dups?` · ${dups} déjà présent(s), ignoré(s)`:''}</p>
+   ${I.unknown&&I.unknown.length?`<p class="lk-msg" style="background:#FDECEC;color:#8E2A1F;border-radius:10px;padding:8px 12px">Thème(s) inconnu(s) : ${I.unknown.slice(0,8).map(esc).join(' · ')}${I.unknown.length>8?' …':''}. Leurs sujets iront dans le thème choisi ci-dessous. Pour les ranger à part, annulez, créez d’abord ces thèmes (bouton « Nouveau thème »), puis relancez l’import.</p>`:''}
    <div class="row"><label class="f" style="flex:2 1 240px">Thème pour les sujets sans thème reconnu<select id="impDef">${TH().map(x=>`<option value="${esc(x.c)}" ${x.c===I.def?'selected':''}>${esc(x.c+' · '+x.t)}</option>`).join('')}</select></label>
    <label class="inl" style="flex:0 0 auto"><input type="checkbox" id="impPrio" ${I.prio?'checked':''}> Prioritaires ★</label></div>
    <div class="tblwrap"><table class="imptab"><tbody>${I.rows.slice(0,300).map((r,i)=>`<tr${r.dup?' style="opacity:.45"':''}><td class="c">${i+1}</td><td>${esc(r.text)}</td><td class="c">${esc(impTarget(r))}${r.dup?' · déjà présent':''}</td></tr>`).join('')}</tbody></table></div>
    <div class="acts left mt"><button class="btn primary" id="impGo" ${ok.length&&!I.busy?'':'disabled'}>${I.busy?'Import en cours…':`Importer ${ok.length} sujet(s)`}</button><button class="btn" id="impCancel" ${I.busy?'disabled':''}>Annuler</button></div></div>`;
 }
+async function delSubjects(ids){const items=ids.map(id=>D.subj[id]).filter(Boolean).map(x=>({id:x.id,code:x.code}));if(!items.length)return;
+  items.forEach(x=>{delete D.subj[x.id];delete prie[x.id];if(st.sel)delete st.sel[x.id]});ls.set('apg_prie_'+iso(today),prie);reindex();render(true);
+  await act('deleteSubjects',[items],items.length>1?items.length+' sujets supprimés.':'Sujet supprimé.')}
+async function retSubjects(ids){const items=ids.map(id=>D.subj[id]).filter(x=>x&&x.statut==='Actif');items.forEach(x=>{x.statut='Retiré';x.dstatut=iso(today);if(st.sel)delete st.sel[x.id]});reindex();render(true);
+  for(const x of items)await act('setStatut',[x.id,'Retiré',{code:x.code}]).catch(()=>{});toast(items.length+' sujet'+(items.length>1?'s':'')+' retiré'+(items.length>1?'s':'')+' de la prière.')}
+document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+  if(b.id==='selOn'){st.selMode=true;st.sel={};st.selAsk=null;render(true)}
+  else if(b.id==='selOff'){st.selMode=false;st.sel={};st.selAsk=null;render(true)}
+  else if(d.selall!==undefined){st.sel={};d.selall.split(',').filter(Boolean).forEach(id=>st.sel[id]=true);render(true)}
+  else if(b.id==='selNone'){st.sel={};st.selAsk=null;render(true)}
+  else if(b.id==='selRet'){st.selAsk='ret';render(true)}else if(b.id==='selDel'){st.selAsk='del';render(true)}else if(b.id==='selNo'){st.selAsk=null;render(true)}
+  else if(b.id==='selOk'){const ids=Object.keys(st.sel).filter(k=>st.sel[k]);const a=st.selAsk;st.selAsk=null;if(a==='del')await delSubjects(ids);else await retSubjects(ids)}});
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset&&t.dataset.sel){st.sel[t.dataset.sel]=t.checked;render(true)}});
+function selBar(ids){const n=Object.keys(st.sel||{}).filter(k=>st.sel[k]).length;
+  if(!st.selMode)return `<div class="acts left" style="margin:0 0 10px"><button class="btn small" id="selOn">${ic('check')}Sélectionner plusieurs sujets</button><span class="muted" style="font-size:.85rem">pour les retirer ou les supprimer d’un coup</span></div>`;
+  return `<div class="card selbar"><div class="acts left" style="align-items:center"><b style="flex:1 1 160px">${n} sujet${n>1?'s':''} sélectionné${n>1?'s':''}</b>
+   <button class="btn small" data-selall="${esc(ids.join(','))}">Tout sélectionner (${ids.length})</button>${n?'<button class="btn small" id="selNone">Tout désélectionner</button>':''}</div>
+   ${st.selAsk?`<p class="mt" style="margin-bottom:6px"><b>${st.selAsk==='del'?`Supprimer définitivement ${n} sujet${n>1?'s':''} ?`:`Retirer ${n} sujet${n>1?'s':''} de la prière ?`}</b> ${st.selAsk==='del'?'Leurs lignes seront effacées des feuilles thèmes.':'Ils resteront dans les feuilles et pourront être remis.'}</p>
+     <div class="acts left"><button class="btn ${st.selAsk==='del'?'danger':'primary'}" id="selOk">Oui, ${st.selAsk==='del'?'supprimer':'retirer'}</button><button class="btn" id="selNo">Non</button></div>`
+   :`<div class="acts left mt"><button class="btn" id="selRet" ${n?'':'disabled'}>${ic('undo')}Retirer de la prière</button><button class="btn danger" id="selDel" ${n?'':'disabled'}>${ic('trash')}Supprimer définitivement</button><button class="btn" id="selOff">Terminer</button></div>`}</div>`}
 function vThemes(){
   const list=TH().filter(t=>t.d===st.thDay);if(!st.thCode||!list.find(t=>t.c===st.thCode))st.thCode=list[0]?.c||null;
   const t=st.thCode?byCode(st.thCode):null;const all=t?subjects(t.c):[];const q=norm(st.q);let body='';
   if(q){const hits=[];TH().forEach(th=>subjects(th.c).forEach((x,i)=>{if(norm(x.text).includes(q))hits.push([th,x,i])}));
-    body=`<p class="muted">${hits.length} sujet(s) trouvé(s)${hits.length>200?' — 200 premiers affichés':''}.</p><div class="theme"><ol class="subj">${hits.slice(0,200).map(([th,x,i])=>subjLi({...x,text:`[${th.t}] ${x.text}`},i+1,false)).join('')}</ol></div>`}
+    body=selBar(hits.map(h=>h[1].id))+`<p class="muted">${hits.length} sujet(s) trouvé(s)${hits.length>200?' — 200 premiers affichés':''}.</p><div class="theme"><ol class="subj">${hits.slice(0,200).map(([th,x,i])=>subjLi({...x,text:`[${th.t}] ${x.text}`},i+1,false)).join('')}</ol></div>`}
   else if(!t)body=gestCard(null)+`<div class="empty">Aucun thème pour ce jour. Créez-en un ci-dessus.</div>`;
   else{const N=LOT();let html='';all.forEach((x,i)=>{if(i%N===0)html+=`<li class="lotsep">Lot ${i/N+1}</li>`;html+=subjLi(x,i+1,false)});
     const ret=Object.values(D.subj).filter(s=>s.code===t.c&&s.statut==='Retiré');
-    body=gestCard(t)+impCard()+`<div class="card"><div class="row"><label class="f" style="flex:3 1 260px">Nouveau sujet pour « ${esc(t.t)} »<input type="text" id="newTx" placeholder="Disons au Seigneur : …"></label><label class="inl" style="flex:0 0 auto"><input type="checkbox" id="newPrio" checked> Prioritaire ★</label><button class="btn primary" id="addBtn" style="flex:0 0 auto">${ic('plus')}Ajouter</button></div></div>
+    body=gestCard(t)+impCard()+selBar(all.map(x=>x.id))+`<div class="card"><div class="row"><label class="f" style="flex:3 1 260px">Nouveau sujet pour « ${esc(t.t)} »<input type="text" id="newTx" placeholder="Disons au Seigneur : …"></label><label class="inl" style="flex:0 0 auto"><input type="checkbox" id="newPrio" checked> Prioritaire ★</label><button class="btn primary" id="addBtn" style="flex:0 0 auto">${ic('plus')}Ajouter</button></div></div>
      <section class="theme" style="--cat:${catStyle(t.k)[0]}"><div class="thead"><span class="ticon">${ic(catStyle(t.k)[1])}</span><div class="tmeta"><div class="code"><span class="chip">${esc(t.k)}</span>${esc(t.c)} · ${all.length} sujets actifs · ${Math.max(1,Math.ceil(all.length/N))} lots</div><h3>${esc(t.t)}</h3></div></div><ol class="subj">${html}</ol></section>
-     ${ret.length?`<h2>Sujets retirés</h2><div class="theme">${ret.map(s=>`<div class="ex"><div>${esc(s.text)}</div><div class="meta">Retiré le ${fmt(s.dstatut)} <button class="btn small" data-restore="${esc(s.id)}">${ic('undo')}Remettre en prière</button></div></div>`).join('')}</div>`:''}`}
+     ${ret.length?`<h2>Sujets retirés</h2><div class="theme">${ret.map(s=>`<div class="ex"><div>${esc(s.text)}</div><div class="meta">Retiré le ${fmt(s.dstatut)} <button class="btn small" data-restore="${esc(s.id)}">${ic('undo')}Remettre en prière</button><button class="btn small" data-delsubj="${esc(s.id)}">${ic('trash')}Supprimer définitivement</button></div></div>`).join('')}</div>`:''}`}
   return rwCard()+`<div class="row" style="margin-bottom:12px"><label class="f">Jour<select id="thDay">${['TOUS LES JOURS',...DAYS].map(d=>`<option ${d===st.thDay?'selected':''}>${d}</option>`).join('')}</select></label>
    <label class="f" style="flex:2 1 240px">Thème<select id="thCode">${list.map(x=>`<option value="${esc(x.c)}" ${x.c===st.thCode?'selected':''}>${esc(x.c+' · '+x.t)}</option>`).join('')}</select></label>
    <label class="f">Rechercher dans tous les sujets<input type="text" id="q" value="${esc(st.q)}" placeholder="ex. santé, travail…"></label></div>${body}`;
@@ -862,6 +890,147 @@ function vReglages(){
    <p class="muted">Tout est enregistré dans la feuille Google Sheets de votre Drive ; une copie est gardée sur l'appareil pour prier sans réseau. Pour une sauvegarde : dans la feuille, Fichier > Télécharger > Microsoft Excel.</p></div>`;
 }
 
+/* ================= Export Word (.docx) et Excel (.xlsx) — fabriqués sur l'appareil, sans internet ================= */
+const XO={font:'Sansation',vio:'2A1C63',fire:'E8551F',mut:'6B6785'};
+/* --- zip (sans compression) --- */
+const CRC_T=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRC_T[(c^b[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+function zipStore(files){const enc=new TextEncoder();const parts=[],cen=[];let off=0;
+  const u16=v=>[v&255,(v>>>8)&255],u32=v=>[v&255,(v>>>8)&255,(v>>>16)&255,(v>>>24)&255];
+  files.forEach(([name,txt])=>{const nb=enc.encode(name),db=enc.encode(txt),c=crc32(db);
+    const loc=new Uint8Array([...u32(0x04034b50),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(db.length),...u32(db.length),...u16(nb.length),...u16(0)]);
+    parts.push(loc,nb,db);
+    cen.push(new Uint8Array([...u32(0x02014b50),...u16(20),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(db.length),...u32(db.length),...u16(nb.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]),nb);
+    off+=loc.length+nb.length+db.length});
+  const cs=cen.reduce((a,b)=>a+b.length,0);
+  const end=new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),...u16(files.length),...u16(files.length),...u32(cs),...u32(off),...u16(0)]);
+  return new Blob([...parts,...cen,end])}
+const xe=s=>String(s??'').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+/* --- Word ---
+   blocs : {h1:t} {h2:t} {p:t, muted?, bold?} {li:[num,t], star?, done?} {meta:t} {kv:[[k,v],…]} {br:1} */
+function docxBlob(title,sub,blocks){
+  const r=(t,o={})=>`<w:r><w:rPr>${o.b?'<w:b/>':''}${o.i?'<w:i/>':''}${o.c?`<w:color w:val="${o.c}"/>`:''}${o.sz?`<w:sz w:val="${o.sz}"/><w:szCs w:val="${o.sz}"/>`:''}${o.strike?'<w:strike/>':''}</w:rPr><w:t xml:space="preserve">${xe(t)}</w:t></w:r>`;
+  const P=(inner,pPr='')=>`<w:p><w:pPr>${pPr}</w:pPr>${inner}</w:p>`;
+  let body=P(r(title,{b:1,c:XO.vio,sz:36}),'<w:pStyle w:val="Title"/><w:spacing w:after="60"/>');
+  if(sub)body+=P(r(sub,{c:XO.mut,sz:20}),`<w:pBdr><w:bottom w:val="single" w:sz="12" w:space="6" w:color="${XO.fire}"/></w:pBdr><w:spacing w:after="240"/>`);
+  blocks.forEach(b=>{
+    if(b.h1)body+=P(r(b.h1,{b:1,c:XO.vio,sz:28}),'<w:pStyle w:val="Heading1"/><w:keepNext/><w:spacing w:before="320" w:after="100"/>');
+    else if(b.h2)body+=P((b.code?r(b.code+'  ',{b:1,c:XO.fire,sz:24}):'')+r(b.h2,{b:1,c:XO.vio,sz:24}),`<w:pStyle w:val="Heading2"/><w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="3" w:color="E4DFF0"/></w:pBdr><w:spacing w:before="240" w:after="80"/>`);
+    else if(b.meta)body+=P(r(b.meta,{c:XO.mut,sz:19}),'<w:keepNext/><w:spacing w:after="80"/>');
+    else if(b.li)body+=P(r(b.li[0]+'.\t',{c:XO.mut})+(b.star?r('★ ',{c:'F5A623',b:1}):'')+r(b.li[1])+(b.done?r('  ✓',{c:'2D8A4E',b:1}):''),'<w:tabs><w:tab w:val="left" w:pos="567"/></w:tabs><w:spacing w:after="60" w:line="288" w:lineRule="auto"/><w:ind w:left="567" w:hanging="567"/>');
+    else if(b.kv)body+=b.kv.map(([k,v])=>P(r(k+' : ',{b:1,c:XO.vio})+r(v),'<w:spacing w:after="40"/><w:ind w:left="284"/>')).join('');
+    else if(b.p!=null)body+=P(r(b.p,{c:b.muted?XO.mut:null,b:b.bold,i:b.italic}),'<w:spacing w:after="100" w:line="288" w:lineRule="auto"/>'+(b.indent?'<w:ind w:left="567"/>':''));
+    else if(b.br)body+=P('','<w:spacing w:after="0"/>');
+  });
+  const F=XO.font;
+  const doc=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${body}<w:sectPr><w:footerReference w:type="default" r:id="rIdF"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="${F}" w:hAnsi="${F}" w:cs="${F}" w:eastAsia="${F}"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="fr-FR"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80"/></w:pPr></w:pPrDefault></w:docDefaults>
+<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
+<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/></w:style>
+<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:outlineLvl w:val="1"/></w:pPr></w:style>
+<w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/></w:style></w:styles>`;
+  const foot=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:pStyle w:val="Footer"/><w:jc w:val="center"/></w:pPr>${r('Autel de Prière · '+title+' · page ',{c:XO.mut,sz:16})}<w:r><w:rPr><w:color w:val="${XO.mut}"/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:color w:val="${XO.mut}"/><w:sz w:val="16"/></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:rPr><w:color w:val="${XO.mut}"/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:color w:val="${XO.mut}"/><w:sz w:val="16"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:color w:val="${XO.mut}"/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`;
+  return zipStore([
+    ['[Content_Types].xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`],
+    ['_rels/.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`],
+    ['docProps/core.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${xe(title)}</dc:title><dc:creator>${xe(D.me||'Autel de Prière')}</dc:creator></cp:coreProperties>`],
+    ['word/_rels/document.xml.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdF" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/></Relationships>`],
+    ['word/document.xml',doc],['word/styles.xml',styles],['word/footer1.xml',foot]])}
+/* --- Excel --- feuilles : {name, cols:[[titre,largeur]], rows:[[…]], wrap:[indices]} */
+function xlsxBlob(sheets){
+  const colL=i=>{let s='';i++;while(i){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26)}return s};
+  const used=new Set();const nm=n=>{let b=String(n).replace(/[\[\]:*?\/\\]/g,' ').slice(0,31).trim()||'Feuille';let x=b,k=2;while(used.has(x.toLowerCase()))x=b.slice(0,28)+' '+k++;used.add(x.toLowerCase());return x};
+  const files=[];const wsx=[];
+  sheets.forEach((S,si)=>{const wrap=new Set(S.wrap||[]);
+    const cell=(v,ri,ci,st)=>{const ref=colL(ci)+(ri+1);if(v==null||v==='')return st?`<c r="${ref}" s="${st}"/>`:'';
+      if(typeof v==='number'&&isFinite(v))return `<c r="${ref}" s="${st||0}"><v>${v}</v></c>`;
+      return `<c r="${ref}" t="inlineStr" s="${st||(wrap.has(ci)?2:0)}"><is><t xml:space="preserve">${xe(v)}</t></is></c>`};
+    let rows=`<row r="1" ht="24" customHeight="1">${S.cols.map((c,ci)=>cell(c[0],0,ci,1)).join('')}</row>`;
+    S.rows.forEach((r,ri)=>{rows+=`<row r="${ri+2}">${r.map((v,ci)=>cell(v,ri+1,ci,wrap.has(ci)?2:(typeof v==='number'?3:0))).join('')}</row>`});
+    const last=colL(S.cols.length-1)+(S.rows.length+1);
+    wsx.push(nm(S.name));
+    files.push([`xl/worksheets/sheet${si+1}.xml`,`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"${si?'':' tabSelected="1"'}><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${S.cols.map((c,ci)=>`<col min="${ci+1}" max="${ci+1}" width="${c[1]||14}" customWidth="1"/>`).join('')}</cols><sheetData>${rows}</sheetData>${S.rows.length?`<autoFilter ref="A1:${last}"/>`:''}<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`])});
+  const F=XO.font;
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="${F}"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="${F}"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF${XO.vio}"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FFE4DFF0"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment vertical="top"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  return zipStore([
+    ['[Content_Types].xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`],
+    ['_rels/.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${wsx.map((n,i)=>`<sheet name="${xe(n)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets></workbook>`],
+    ['xl/_rels/workbook.xml.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ['xl/styles.xml',styles],...files])}
+/* --- téléchargement --- */
+const fnSafe=s=>String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,60);
+async function saveBlob(blob,name,mime){const file=new Blob([blob],{type:mime});
+  try{if(standalone()&&navigator.canShare&&/iPhone|iPad|iPod/.test(navigator.userAgent)){const f=new File([file],name,{type:mime});if(navigator.canShare({files:[f]})){await navigator.share({files:[f],title:name});return}}}catch(_){}
+  const u=URL.createObjectURL(file);const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);toast('Fichier « '+name+' » enregistré dans vos téléchargements.')}
+const MIME={docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'};
+/* --- contenus de chaque page --- */
+const yn=v=>v?'oui':'';const stamp=()=>jma(new Date())+' à '+hm24(new Date());
+function xTheme(t,all,withPrie){const N=LOT();const a=subjects(t.c);const B=[];const L=Math.max(1,Math.ceil(a.length/N));
+  if(all){B.push({h2:t.t,code:t.c},{meta:`${t.k} · ${(t.d||'').toLowerCase()} · ${a.length} sujets actifs · ${L} lot${L>1?'s':''}`});a.forEach((x,i)=>B.push({li:[i+1,x.text],star:x.prio}));return B}
+  const l=lotFor(t.c,a.length);const it=a.slice(l*N,l*N+N);B.push({h2:t.t,code:t.c},{meta:`${t.k} · lot ${l+1}/${L}`});it.forEach((x,i)=>B.push({li:[l*N+i+1,x.text],star:x.prio,done:withPrie&&prie[x.id]}));return B}
+const themeRows=(list,all)=>{const N=LOT();const R=[];list.forEach(t=>{const a=subjects(t.c);const L=Math.max(1,Math.ceil(a.length/N));const l=lotFor(t.c,a.length);
+  (all?a.map((x,i)=>[x,i]):a.slice(l*N,l*N+N).map((x,i)=>[x,l*N+i])).forEach(([x,i])=>R.push([t.c,t.t,t.k,(t.d||'').toLowerCase(),Math.floor(i/N)+1,i+1,x.text,x.prio?'★':'',...(all?[x.id]:[yn(prie[x.id])])]))});return R};
+const TH_COLS=all=>[['Code',9],['Thème',30],['Catégorie',13],['Jour',13],['Lot',6],['N°',6],['Sujet de prière',90],['Prioritaire',10],all?['ID',15]:['Prié',7]];
+function xSpec(){
+  const tab=st.tab;const sec=num('secondes',30);
+  if(tab==='jour'){const k=DAYS.indexOf(st.day);const d=new Date(monday(today));d.setDate(d.getDate()+k);const th=dayThemes(st.day);const {tot,done}=dayStats();
+    const title='Prière du '+JOURS7[k].toLowerCase()+' '+jma(d);const note=SET()['note_'+st.day];
+    return {name:'Priere_du_jour_'+jma(d),title,sub:`${th.length} thèmes · ${tot} sujets · ${hm(tot*sec/60)} · semaine ${weekIndex()+1}${st.day===todayDay()?` · ${done}/${tot} priés`:''}`,
+      blocks:[...(note?[{p:note,italic:true,muted:true}]:[]),...th.flatMap(t=>xTheme(t,false,true))],
+      sheets:[{name:JOURS7[k],cols:TH_COLS(false),rows:themeRows(th,false),wrap:[1,6]}]}}
+  if(tab==='nuit'){const n=curNight();
+    if(n){const d=new Date(n.date+'T00:00');const pr=nPrie(n.id);const L=(n.items||[]).map((x,i)=>[i,x]).filter(([,x])=>x);const title=(n.titre||'Nuit de prière');
+      return {name:'Nuit_'+jma(d)+'_'+title,title,sub:`${isNaN(d)?'':wjma(d)} · ${L.length} sujets · ${hm(L.length*(+n.sec||30)/60)} (${n.sec} s par sujet)`,
+        blocks:L.map(([i,x])=>({li:[i+1,x],done:pr[i]})),
+        sheets:[{name:'Nuit '+jma(d).replace(/\//g,'-'),cols:[['N°',6],['Sujet de prière',95],['Prié',7]],rows:L.map(([i,x])=>[i+1,x,yn(pr[i])]),wrap:[1]}]}}
+    const all=(D.nights||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const rows=all.map(n=>[fmt(n.date),n.titre||'Nuit de prière',n.nb,hm(n.nb*n.sec/60),n.sec,Object.values(nPrie(n.id)).filter(Boolean).length,n.par||'']);
+    return {name:'Nuits_de_priere',title:'Nuits de prière',sub:`${all.length} nuit${all.length>1?'s':''} · exporté le ${stamp()}`,
+      blocks:all.flatMap(n=>{const B=[{h2:(n.titre||'Nuit de prière')+' — '+fmt(n.date)},{meta:`${n.nb} sujets · ${hm(n.nb*n.sec/60)} · ${n.sec} s par sujet${n.par?' · '+n.par:''}`}];const N=NIGHT[n.id];if(N)(N.items||[]).forEach((x,i)=>{if(x)B.push({li:[i+1,x]})});else B.push({p:'(ouvrez cette nuit une fois dans l’application pour exporter ses sujets)',muted:true,italic:true});return B}),
+      sheets:[{name:'Nuits',cols:[['Date',11],['Intention',40],['Sujets',9],['Durée',11],['Secondes',10],['Priés',8],['Par',14]],rows,wrap:[1]},
+        ...all.filter(n=>NIGHT[n.id]).map(n=>({name:'Nuit '+fmt(n.date).replace(/\//g,'-'),cols:[['N°',6],['Sujet de prière',95]],rows:(NIGHT[n.id].items||[]).map((x,i)=>[i+1,x]).filter(r=>r[1]),wrap:[1]}))]}}
+  if(tab==='chants'){const T=['Louange','Adoration'];
+    return {name:'Louange_et_adoration',title:'Louange et adoration',sub:'Titres de chants · exporté le '+stamp(),
+      blocks:T.flatMap(t=>[{h1:t},...chOf(t).map((c,i)=>({li:[i+1,c.titre]}))]),
+      sheets:T.map(t=>({name:t,cols:[['N°',6],['Titre',60]],rows:chOf(t).map((c,i)=>[i+1,c.titre]),wrap:[1]}))}}
+  if(tab==='themes'){const t=st.thCode?byCode(st.thCode):null;if(!t)return null;const a=subjects(t.c);
+    return {name:'Theme_'+t.c+'_'+t.t,title:t.c+' · '+t.t,sub:`${t.k} · ${(t.d||'').toLowerCase()} · ${a.length} sujets actifs · exporté le ${stamp()}`,
+      blocks:xTheme(t,true).slice(2),sheets:[{name:t.c,cols:TH_COLS(true),rows:themeRows([t],true),wrap:[1,6]}]}}
+  if(tab==='exauces'){const qn=norm(st.exQ);const ex=D.exauces.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).filter(s=>(!st.exYear||(s.date||'').startsWith(st.exYear))&&(!qn||norm(s.text+' '+s.note+' '+s.theme).includes(qn)));
+    return {name:'Sujets_exauces',title:'Sujets exaucés',sub:`${ex.length} exaucement${ex.length>1?'s':''}${st.exYear?' · '+st.exYear:''} · exporté le ${stamp()}`,
+      blocks:ex.flatMap((s,i)=>[{li:[i+1,s.text]},{meta:fmt(s.date)+' · '+(s.theme||'Témoignage libre')},...(s.note?[{p:'Témoignage : '+s.note,indent:1}]:[]),...(s.remplace?[{p:'Remplacé par : '+s.remplace,indent:1,muted:1}]:[])]),
+      sheets:[{name:'Exaucés',cols:[['Date',11],['Sujet',70],['Thème',30],['Témoignage',60],['Remplacé par',50]],rows:ex.map(s=>[fmt(s.date),s.text,s.theme||'Témoignage libre',s.note||'',s.remplace||'']),wrap:[1,3,4]}]}}
+  if(tab==='eglise'){
+    if(st.ceSeg==='sem'){const mon=new Date(st.week+'T00:00');const B=[],R=[];
+      JOURS7.forEach((j,k)=>{const d=new Date(mon);d.setDate(d.getDate()+k);const v=dayData(k);const it=v.items.map((x,i)=>[i,x]).filter(([,x])=>x);if(!it.length&&!v.titre)return;const done=ls.get('apg_ce_'+st.week+'_'+k,{});
+        B.push({h2:j+' '+jma(d)},{meta:[v.titre,v.cond?'conducteur : '+v.cond:'',it.length+' sujets · '+hm(it.length*sec/60)].filter(Boolean).join(' · ')});it.forEach(([i,x])=>{B.push({li:[i+1,x],done:done[i]});R.push([jma(d),j,v.titre,v.cond,i+1,x,yn(done[i])])})});
+      return {name:'Prieres_semaine_'+fmt(st.week),title:'Prières de la semaine du '+fmt(st.week),sub:"Programme de l'église · exporté le "+stamp(),blocks:B.length?B:[{p:'Aucun sujet rédigé cette semaine.',muted:1}],
+        sheets:[{name:'Semaine '+fmt(st.week).replace(/\//g,'-'),cols:[['Date',11],['Jour',11],['Thème ou activité',30],['Conducteur',16],['N°',6],['Sujet de prière',85],['Prié',7]],rows:R,wrap:[2,5]}]}}
+    const ev=D.prog.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    return {name:'Programme_des_activites',title:'Programme des activités',sub:`${ev.length} activité${ev.length>1?'s':''} · exporté le ${stamp()}`,
+      blocks:ev.flatMap(e=>[{h2:fmt(e.date)+' · '+e.titre},{meta:[e.type,e.resp?'responsable : '+e.resp:'',e.fait?'fait':''].filter(Boolean).join(' · ')},...String(e.sujets||'').split(/\n+/).filter(Boolean).map((x,i)=>({li:[i+1,x]}))]),
+      sheets:[{name:'Programme',cols:[['Date',11],['Type',14],['Titre',36],['Responsable',18],['Fait',7],['Sujets',80]],rows:ev.map(e=>[fmt(e.date),e.type,e.titre,e.resp||'',yn(e.fait),e.sujets||'']),wrap:[2,5]}]}}
+  if(tab==='reglages'){const T=TH();const songs=['Louange','Adoration'].flatMap(t=>chOf(t).map((c,i)=>[t,i+1,c.titre]));
+    const nAll=T.reduce((s,t)=>s+subjects(t.c).length,0);
+    return {name:'Toutes_les_donnees_'+jma(new Date()),title:'Autel de Prière — tous les thèmes',sub:`${T.length} thèmes · ${nAll.toLocaleString('fr-FR')} sujets actifs · exporté le ${stamp()}`,
+      blocks:['TOUS LES JOURS',...DAYS].flatMap(d=>{const L=T.filter(t=>t.d===d);return L.length?[{h1:d.charAt(0)+d.slice(1).toLowerCase()},...L.flatMap(t=>xTheme(t,true))]:[]}),
+      sheets:[{name:'Thèmes',cols:[['Code',9],['Jour',15],['Catégorie',13],['Thème',45],['Sujets actifs',12]],rows:T.map(t=>[t.c,t.d,t.k,t.t,subjects(t.c).length]),wrap:[3]},
+        {name:'Sujets',cols:TH_COLS(true),rows:themeRows(T,true),wrap:[1,6]},
+        {name:'Exaucés',cols:[['Date',11],['Sujet',70],['Thème',30],['Témoignage',60],['Remplacé par',50]],rows:D.exauces.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(s=>[fmt(s.date),s.text,s.theme||'Témoignage libre',s.note||'',s.remplace||'']),wrap:[1,3,4]},
+        {name:'Programme',cols:[['Date',11],['Type',14],['Titre',36],['Responsable',18],['Fait',7],['Sujets',80]],rows:D.prog.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(e=>[fmt(e.date),e.type,e.titre,e.resp||'',yn(e.fait),e.sujets||'']),wrap:[2,5]},
+        {name:'Nuits',cols:[['Date',11],['Intention',40],['Sujets',9],['Durée',11],['Secondes',10],['Par',14]],rows:(D.nights||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(n=>[fmt(n.date),n.titre||'Nuit de prière',n.nb,hm(n.nb*n.sec/60),n.sec,n.par||'']),wrap:[1]},
+        {name:'Chants',cols:[['Type',12],['N°',6],['Titre',60]],rows:songs,wrap:[2]}]}}
+  return null}
+function xBar(){if(!['jour','nuit','chants','themes','exauces','eglise','reglages'].includes(st.tab))return '';
+  if(st.tab==='themes'&&!st.thCode)return '';
+  const lbl={jour:'cette prière',nuit:curNight()?'cette nuit':'les nuits',chants:'les chants',themes:'ce thème',exauces:'les exaucés',eglise:st.ceSeg==='sem'?'la semaine':'le programme',reglages:'toutes les données'}[st.tab];
+  return `<div class="xbar" role="group" aria-label="Exporter"><span>${ic('download')}Exporter ${lbl}</span><button class="btn small" data-xp="docx">${ic('book')}Word</button><button class="btn small" data-xp="xlsx">${ic('list')}Excel</button></div>`}
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-xp]');if(!b)return;const S=xSpec();if(!S){toast('Rien à exporter sur cette page.');return}
+  b.disabled=true;try{const ext=b.dataset.xp;const blob=ext==='docx'?docxBlob(S.title,S.sub,S.blocks):xlsxBlob(S.sheets);
+    await saveBlob(blob,'Autel_'+fnSafe(S.name)+'.'+ext,MIME[ext])}catch(err){console.error(err);toast('Export impossible : '+err.message)}finally{b.disabled=false}});
+
 /* ================= Rendu ================= */
 const TABS={jour:['Prière du jour','flame'],nuit:['Nuit de prière','moon'],chants:['Louange et adoration','music'],themes:['Thèmes et sujets','book'],exauces:['Sujets exaucés','star'],eglise:["Programme de l'église",'church'],reglages:['Réglages','sliders']};
 const KEEP=['ngKey','chNewLouange','chNewAdoration','pwOld','pwNew','pwNew2','chNew','chNewA','chBulkTx','chEdT','chEdA','chEdK','chEdL','chEdN','nTitre','nPaste','nEdTx','nTitreEd','setMe','cfUrl','cfKey','cfMe','edTx','tem','remp','temd','ceTx','ceTitre','ceCond','evTi','evS','evR','evTn','gName','gCatNew','libTx','libTem','catNew','setFoyer'];
@@ -873,7 +1042,7 @@ function render(force){
   document.querySelectorAll('nav.tabs button').forEach(x=>x.setAttribute('aria-selected',x.dataset.tab===st.tab));
   const g=$('#gear');if(g)g.classList.toggle('on',st.tab==='reglages');
   $('#pagehead').innerHTML=st.tab==='jour'?vHero():`<div class="pagehead">${ic(TABS[st.tab][1])}<h2>${TABS[st.tab][0]}</h2></div>`;
-  $('#view').innerHTML=({jour:vJour,nuit:vNuit,chants:vChants,themes:vThemes,exauces:vExauces,eglise:vEglise,reglages:vReglages}[st.tab]||vJour)();
+  {const v=({jour:vJour,nuit:vNuit,chants:vChants,themes:vThemes,exauces:vExauces,eglise:vEglise,reglages:vReglages}[st.tab]||vJour)();$('#view').innerHTML=xBar()+v}
   if(keep){const e=document.getElementById(keep[0]);if(e){e.focus();try{e.setSelectionRange(keep[1],keep[1])}catch(_){}}}
 }
 function findSubj(id){const s=D.subj[id];return s?[byCode(s.code)||{t:'',c:s.code},s]:[null,null]}
@@ -892,14 +1061,16 @@ document.addEventListener('click',async e=>{
   if(d.day){st.day=d.day;render(true)}
   else if(d.lot){lotOff[d.lot]=(lotOff[d.lot]||0)+(+d.d);ls.set('apg_lotoff',lotOff);render(true)}
   else if(d.exa){st.open=st.open===d.exa?null:d.exa;st.edit=null;render(true);setTimeout(()=>$('#tem')?.focus(),0)}
-  else if(d.cancel!==undefined){st.open=null;st.edit=null;render(true)}
+  else if(d.cancel!==undefined){st.open=null;st.edit=null;st.del=null;render(true)}
+  else if(d.askdel){st.del=st.del===d.askdel?null:d.askdel;st.edit=null;st.open=null;render(true)}
+  else if(d.delsubj){st.del=null;await delSubjects([d.delsubj])}
   else if(d.conf){const[t,x]=findSubj(d.conf);if(!x)return;const rp=$('#remp').value.trim(),dt=dv('temd')||iso(today),nt=$('#tem').value.trim();st.open=null;
     x.statut='Exaucé';x.dstatut=dt;D.exauces.push({date:dt,id:x.id,code:x.code,theme:t.t,text:x.text,note:nt,remplace:rp,par:D.me});reindex();render(true);
     const created=await act('setStatut',[x.id,'Exaucé',{date:dt,note:nt,remplacement:rp,theme:t.t,code:x.code}],rp?'Gloire à Dieu ! Sujet exaucé et remplacé.':'Gloire à Dieu ! Sujet noté comme exaucé.');
     if(created){D.subj[created[0]]={id:created[0],code:created[1],text:created[2],prio:created[3],statut:created[4],ordre:created[5],dstatut:''};reindex();render(true)}}
   else if(d.edit){st.edit=st.edit===d.edit?null:d.edit;st.open=null;render(true);setTimeout(()=>$('#edTx')?.focus(),0)}
   else if(d.edsave){const x=D.subj[d.edsave];if(!x)return;const nx=$('#edTx').value.trim(),np=$('#edPrio').checked?1:0;if(!nx){toast('Le sujet ne peut pas être vide.');return}st.edit=null;if(nx!==x.text&&!x.aj){if(!(D.pairs||[]).some(p=>p[0]===x.id))(D.pairs=D.pairs||[]).push([x.id,x.text]);x.aj=1;RW=null}x.text=nx;x.prio=np;reindex();render(true);await act('editSubject',[x.id,nx,np,x.code],'Sujet modifié.')}
-  else if(d.ret){const x=D.subj[d.ret];if(!x)return;x.statut='Retiré';x.dstatut=iso(today);reindex();render(true);await act('setStatut',[x.id,'Retiré',{code:x.code}],'Sujet retiré de la prière.')}
+  else if(d.ret){st.del=null;const x=D.subj[d.ret];if(!x)return;x.statut='Retiré';x.dstatut=iso(today);reindex();render(true);await act('setStatut',[x.id,'Retiré',{code:x.code}],'Sujet retiré de la prière.')}
   else if(d.restore){const x=D.subj[d.restore];if(x){x.statut='Actif';x.dstatut=''}D.exauces=D.exauces.filter(s=>s.id!==d.restore);reindex();render(true);await act('setStatut',[d.restore,'Actif',{code:(D.subj[d.restore]||{}).code||((D.exauces||[]).find(e=>e.id===d.restore)||{}).code}],'Sujet remis en prière.')}
   else if(d.delex){D.exauces=D.exauces.filter(s=>s.id!==d.delex);render(true);await act('deleteExauce',[d.delex])}
   else if(b.id==='addBtn'){const tx=$('#newTx').value.trim();if(!tx){toast('Écrivez le sujet avant de l’ajouter.');return}const pr=$('#newPrio').checked?1:0;$('#newTx').value='';
@@ -961,14 +1132,14 @@ document.addEventListener('change',async e=>{
   try{
   if(t.dataset.prie){prie[t.dataset.prie]=t.checked;ls.set('apg_prie_'+iso(today),prie);journalNow();render(true)}
   else if(t.id==='impFile'&&t.files[0]){const f=t.files[0];st.imp={name:f.name,loading:true,rows:[],def:st.thCode,prio:true};render(true);
-    try{const rows=await parseFile(f);st.imp={name:f.name,rows,def:st.thCode,prio:true};markDups();if(!rows.length)toast('Aucun sujet trouvé dans ce fichier.')}
+    try{const rows=await parseFile(f);st.imp={name:f.name,rows,unknown:rows.unknown||[],def:st.thCode,prio:true};markDups();if(!rows.length)toast('Aucun sujet trouvé dans ce fichier.')}
     catch(err){st.imp=null;toast(err.message==='format'?'Utilisez un fichier Word (.docx) ou Excel (.xlsx).':'Lecture du fichier impossible.')}render(true)}
   else if(t.id==='impDef'){st.imp.def=t.value;markDups();render(true)}
   else if(t.id==='impPrio'){st.imp.prio=t.checked}
   else if(t.id==='commDay'||t.dataset.comm){const day=t.dataset.comm||st.day;const cur=sansCommuns().filter(x=>x!==day);await saveSet({sansCommuns:(t.checked?cur:[...cur,day]).join(',')})}
   else if(t.dataset.note!==undefined){await saveSet({['note_'+t.dataset.note]:t.value.trim()})}
   else if(t.id==='thDay'){st.thDay=t.value;st.thCode=null;st.gest=null;render(true)}
-  else if(t.id==='thCode'){st.thCode=t.value;st.gest=null;render(true)}
+  else if(t.id==='thCode'){st.thCode=t.value;st.gest=null;st.sel={};st.selAsk=null;render(true)}
   else if(t.id==='exYear'){st.exYear=t.value;render(true)}
   else if(t.id==='setFoyer'){await saveSet({foyer:t.value.trim()})}
   else if(t.id==='setDeb'&&dv('setDeb')){await saveSet({debut:dv('setDeb')})}
