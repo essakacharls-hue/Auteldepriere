@@ -44,6 +44,8 @@ function byCode(c){return D.themes.find(t=>t.c===c)}
 function subjects(code){return IDX[code]||[]}
 function weekIndex(){const d=new Date((SET().debut||'2026-10-05')+'T00:00');return Math.floor((monday(today)-monday(d))/(7*864e5))}
 const lotOff=ls.get('apg_lotoff',{});
+/* Sujets d'un lot : toujours LOT() sujets ; un dernier lot incomplet est complété avec les premiers sujets du thème */
+function lotItems(a,l,N){const it=a.slice(l*N,l*N+N);return it.length<N&&a.length>N?it.concat(a.slice(0,N-it.length)):it}
 function lotFor(code,n){const L=Math.max(1,Math.ceil(n/LOT()));const w=weekIndex()+(lotOff[code]||0);return((w%L)+L)%L}
 
 
@@ -270,14 +272,14 @@ function subjLi(x,num,withCheck){
   </li>`;
 }
 function themeCard(t){
-  const N=LOT();const all=subjects(t.c);const L=Math.max(1,Math.ceil(all.length/N));const lot=lotFor(t.c,all.length);const items=all.slice(lot*N,lot*N+N);const [col,icn]=catStyle(t.k);
+  const N=LOT();const all=subjects(t.c);const L=Math.max(1,Math.ceil(all.length/N));const lot=lotFor(t.c,all.length);const items=lotItems(all,lot,N);const [col,icn]=catStyle(t.k);
   const dn=items.filter(x=>prie[x.id]).length;const isToday=st.day===todayDay();
   return `<section class="theme" style="--cat:${col}"><div class="thead"><span class="ticon">${ic(icn)}</span><div class="tmeta"><div class="code"><span class="chip">${esc(t.k)}</span>${esc(t.c)}${isToday&&items.length?` <span class="tprog${dn===items.length?' full':''}">${dn}/${items.length}</span>`:''}
    <span class="lotnav"><button data-lot="${esc(t.c)}" data-d="-1" aria-label="Lot précédent">${ic('left')}</button><span>Lot ${lot+1}/${L}</span><button data-lot="${esc(t.c)}" data-d="1" aria-label="Lot suivant">${ic('right')}</button></span></div><h3>${esc(t.t)}</h3></div></div>
-   ${items.length?`<ol class="subj">${items.map((x,i)=>subjLi(x,lot*N+i+1,true)).join('')}</ol>`:`<div class="empty" style="margin:12px;border-radius:12px">Aucun sujet actif dans ce thème. Ajoutez-en dans l'onglet « Thèmes ».</div>`}</section>`;
+   ${items.length?`<ol class="subj">${items.map(x=>subjLi(x,all.indexOf(x)+1,true)).join('')}</ol>`:`<div class="empty" style="margin:12px;border-radius:12px">Aucun sujet actif dans ce thème. Ajoutez-en dans l'onglet « Thèmes ».</div>`}</section>`;
 }
 function dayThemes(day){const sc=!sansCommuns().includes(day);return TH().filter(t=>t.d===day||(sc&&t.d==='TOUS LES JOURS'))}
-function dayStats(){const N=LOT();const th=dayThemes(st.day);let tot=0,done=0;th.forEach(t=>{const a=subjects(t.c);const l=lotFor(t.c,a.length);a.slice(l*N,l*N+N).forEach(x=>{tot++;if(prie[x.id])done++})});return{th,tot,done}}
+function dayStats(){const N=LOT();const th=dayThemes(st.day);let tot=0,done=0;th.forEach(t=>{const a=subjects(t.c);const l=lotFor(t.c,a.length);lotItems(a,l,N).forEach(x=>{tot++;if(prie[x.id])done++})});return{th,tot,done}}
 function vHero(){
   const {th,tot,done}=dayStats();const min=Math.round(tot*num('secondes',30)/60);const cible=num('cible',0);const isToday=st.day===todayDay();
   const mon=monday(today);const k=DAYS.indexOf(st.day);const dd=new Date(mon);dd.setDate(dd.getDate()+k);
@@ -610,7 +612,7 @@ function runTick(){if(!run.on||run.paused)return;const S=run.sec*1000;const t=Da
   runPaint(false)}
 /* séances « Prière du jour » et « Prières de la semaine » : même déroulé que la nuit */
 /* valider (ou décocher) toute une séance d'un coup */
-function jourIds(){const N=LOT();const out=[];dayThemes(st.day).forEach(t=>{const a=subjects(t.c);const l=lotFor(t.c,a.length);a.slice(l*N,l*N+N).forEach(x=>out.push(x.id))});return out}
+function jourIds(){const N=LOT();const out=[];dayThemes(st.day).forEach(t=>{const a=subjects(t.c);const l=lotFor(t.c,a.length);lotItems(a,l,N).forEach(x=>out.push(x.id))});return out}
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
   if(b.id==='allJour'||b.id==='noneJour'){const ids=jourIds();const all=b.id==='noneJour';ids.forEach(id=>{if(all)delete prie[id];else prie[id]=true});ls.set('apg_prie_'+iso(today),prie);journalNow();render(true);toast(all?'Séance décochée.':`Séance validée : ${ids.length} sujets priés.`)}
   else if(b.id==='allCe'||b.id==='noneCe'){const i=st.ceDay;const v=dayData(i);const pk='apg_ce_'+st.week+'_'+i;const d=ls.get(pk,{});const ks=v.items.map((x,k)=>x?k:-1).filter(k=>k>=0);const all=b.id==='noneCe';
@@ -618,7 +620,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
   else if(b.id==='allNuit'||b.id==='noneNuit'){const n=curNight();if(!n)return;const p=nPrie(n.id);const ks=(n.items||[]).map((x,k)=>x?k:-1).filter(k=>k>=0);const all=b.id==='noneNuit';
     ks.forEach(k=>{if(all)delete p[k];else p[k]=true});ls.set('apg_nprie_'+n.id,p);render(true);toast(all?'Nuit décochée.':`Nuit validée : ${ks.length} sujets priés.`)}
 });
-function runJour(){const N=LOT();const L=[];dayThemes(st.day).forEach(t=>{const a=subjects(t.c);const l=lotFor(t.c,a.length);a.slice(l*N,l*N+N).forEach(x=>L.push([L.length,x.text,x.id]))});
+function runJour(){const N=LOT();const L=[];dayThemes(st.day).forEach(t=>{const a=subjects(t.c);const l=lotFor(t.c,a.length);lotItems(a,l,N).forEach(x=>L.push([L.length,x.text,x.id]))});
   if(!L.length)return;let k=L.findIndex(x=>!prie[x[2]]);if(k<0)k=0;
   runStart({list:L,k,sec:num('secondes',30),title:'Prière du jour',end:'Prière du jour accomplie',mark:id=>{prie[id]=true;ls.set('apg_prie_'+iso(today),prie);journalNow()}})}
 function runCe(){const i=st.ceDay;const v=dayData(i);const L=v.items.map((x,k)=>[k,x,k]).filter(x=>x[1]);if(!L.length)return;
@@ -976,9 +978,9 @@ const MIME={docx:'application/vnd.openxmlformats-officedocument.wordprocessingml
 const yn=v=>v?'oui':'';const stamp=()=>jma(new Date())+' à '+hm24(new Date());
 function xTheme(t,all,withPrie){const N=LOT();const a=subjects(t.c);const B=[];const L=Math.max(1,Math.ceil(a.length/N));
   if(all){B.push({h2:t.t,code:t.c},{meta:`${t.k} · ${(t.d||'').toLowerCase()} · ${a.length} sujets actifs · ${L} lot${L>1?'s':''}`});a.forEach((x,i)=>B.push({li:[i+1,x.text],star:x.prio}));return B}
-  const l=lotFor(t.c,a.length);const it=a.slice(l*N,l*N+N);B.push({h2:t.t,code:t.c},{meta:`${t.k} · lot ${l+1}/${L}`});it.forEach((x,i)=>B.push({li:[l*N+i+1,x.text],star:x.prio,done:withPrie&&prie[x.id]}));return B}
+  const l=lotFor(t.c,a.length);const it=lotItems(a,l,N);B.push({h2:t.t,code:t.c},{meta:`${t.k} · lot ${l+1}/${L}`});it.forEach((x,i)=>B.push({li:[a.indexOf(x)+1,x.text],star:x.prio,done:withPrie&&prie[x.id]}));return B}
 const themeRows=(list,all)=>{const N=LOT();const R=[];list.forEach(t=>{const a=subjects(t.c);const L=Math.max(1,Math.ceil(a.length/N));const l=lotFor(t.c,a.length);
-  (all?a.map((x,i)=>[x,i]):a.slice(l*N,l*N+N).map((x,i)=>[x,l*N+i])).forEach(([x,i])=>R.push([t.c,t.t,t.k,(t.d||'').toLowerCase(),Math.floor(i/N)+1,i+1,x.text,x.prio?'★':'',...(all?[x.id]:[yn(prie[x.id])])]))});return R};
+  (all?a.map((x,i)=>[x,i]):lotItems(a,l,N).map(x=>[x,a.indexOf(x)])).forEach(([x,i])=>R.push([t.c,t.t,t.k,(t.d||'').toLowerCase(),Math.floor(i/N)+1,i+1,x.text,x.prio?'★':'',...(all?[x.id]:[yn(prie[x.id])])]))});return R};
 const TH_COLS=all=>[['Code',9],['Thème',30],['Catégorie',13],['Jour',13],['Lot',6],['N°',6],['Sujet de prière',90],['Prioritaire',10],all?['ID',15]:['Prié',7]];
 function xSpec(){
   const tab=st.tab;const sec=num('secondes',30);
@@ -1079,7 +1081,7 @@ async function aiRun(){aiRead();const T=aiTarget();if(!T)return;AI.err='';
     const ex=AI.ctx==='nuit'?(T.night.items||[]).filter(Boolean):AI.ctx==='eglise'?dayData(st.ceDay).items.filter(Boolean):[];
     fn='aiGenerate';arg={desc:AI.desc.trim(),n:AI.n,code:T.code||'',existants:ex.slice(-80),cadre:AI.ctx==='theme'?'theme':AI.ctx}}
   else{const t=byCode(st.thCode);let a=subjects(t.c);const N=LOT();
-    if(AI.scope==='lot'){const l=lotFor(t.c,a.length);a=a.slice(l*N,l*N+N)}else if(AI.scope==='sel')a=a.filter(x=>st.sel&&st.sel[x.id]);else if(AI.scope!=='all')a=a.slice(0,+AI.scope);
+    if(AI.scope==='lot'){const l=lotFor(t.c,a.length);a=lotItems(a,l,N)}else if(AI.scope==='sel')a=a.filter(x=>st.sel&&st.sel[x.id]);else if(AI.scope!=='all')a=a.slice(0,+AI.scope);
     if(!a.length){toast('Aucun sujet à mettre à jour.');return}if(!AI.instr.trim()){toast('Écrivez ce qu’il faut changer.');return}
     fn='aiRewrite';arg=a.map(x=>({id:x.id,text:x.text}))}
   AI.busy=true;render(true);
@@ -1140,7 +1142,7 @@ function render(force){
   if(keep){const e=document.getElementById(keep[0]);if(e){e.focus();try{e.setSelectionRange(keep[1],keep[1])}catch(_){}}}
 }
 function findSubj(id){const s=D.subj[id];return s?[byCode(s.code)||{t:'',c:s.code},s]:[null,null]}
-function journalNow(){if(st.day!==todayDay())return;const N=LOT();let tot=0,f=0;dayThemes(st.day).forEach(x=>{const a=subjects(x.c);const l=lotFor(x.c,a.length);a.slice(l*N,l*N+N).forEach(s=>{tot++;if(prie[s.id])f++})});
+function journalNow(){if(st.day!==todayDay())return;const N=LOT();let tot=0,f=0;dayThemes(st.day).forEach(x=>{const a=subjects(x.c);const l=lotFor(x.c,a.length);lotItems(a,l,N).forEach(s=>{tot++;if(prie[s.id])f++})});
   D.journal[String(today.getDate())]={f,t:tot};clearTimeout(journalNow.h);journalNow.h=setTimeout(()=>quiet('logJournal',[iso(today),f,tot]),2000)}
 function saveSet(o){Object.assign(D.settings,o);render(true);return act('saveSettings',[o])}
 
