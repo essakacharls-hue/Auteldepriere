@@ -49,6 +49,7 @@ function lotFor(code,n){const L=Math.max(1,Math.ceil(n/LOT()));const w=weekIndex
 
 /* ================= Icônes ================= */
 const ICONS={
+ sparkle:'<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
  flame:'<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
  book:'<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/>',
  star:'<path d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.5l-5.87 3.08 1.12-6.54L2.5 9.41l6.56-.95z"/>',
@@ -103,7 +104,7 @@ function catStyle(k){if(CATS[k])return CATS[k];let h=0;for(const ch of String(k)
 /* ================= Serveur (feuille Google via Apps Script) ================= */
 let CFG=ls.get('apg_cfg',null);
 class NetErr extends Error{}
-const QUEUE=['deleteSubjects','saveSong','deleteSong','reorderSongs','saveNight','deleteNight','setStatut','editSubject','logJournal','saveDay','saveSettings','addTemoignage','deleteExauce','deleteEvent'];
+const QUEUE=['deleteSubjects','applyRewrite','saveSong','deleteSong','reorderSongs','saveNight','deleteNight','setStatut','editSubject','logJournal','saveDay','saveSettings','addTemoignage','deleteExauce','deleteEvent'];
 async function call(fn,...args){
   if(!CFG||!CFG.url)throw new Error("L'application n'est pas encore connectée.");
   let res;
@@ -170,7 +171,7 @@ $('#sync').addEventListener('click',()=>{if(syncState&&syncState!=='Non connect�
 let lastLoad=0;
 function applyData(r,live){
   D.themes=r.themes.map(t=>({c:t[0],d:t[1],o:t[2],k:t[3],t:t[4],statut:t[5]}));
-  D.subj={};r.subjects.forEach(s=>D.subj[s[0]]={id:s[0],code:s[1],text:s[2],prio:s[3],statut:s[4],ordre:s[5],dstatut:s[6],aj:s[7]||0});D.pairs=r.pairs||[];D.rewrite=r.rewrite||null;
+  D.subj={};r.subjects.forEach(s=>D.subj[s[0]]={id:s[0],code:s[1],text:s[2],prio:s[3],statut:s[4],ordre:s[5],dstatut:s[6],aj:s[7]||0});D.pairs=r.pairs||[];D.rewrite=r.rewrite||null;D.ai=r.ai||{on:false};
   D.nights=r.nights||[];D.songs=r.songs||[];D.exauces=r.exauces;D.prog=r.prog;D.settings=r.settings;D.journal=r.journal;D.me=r.me||(CFG&&CFG.me)||'';D.loaded=true;
   if(live&&r.today){const t=new Date(r.today+'T00:00');if(!isNaN(t)&&iso(t)===iso(new Date()))today=t}
   reindex();
@@ -261,6 +262,7 @@ function subjLi(x,num,withCheck){
    ${st.edit===x.id?`<div class="panel warm"><label class="f">Modifier le sujet<textarea id="edTx">${esc(x.text)}</textarea></label><label class="inl"><input type="checkbox" id="edPrio" ${x.prio?'checked':''}> Prioritaire ★ (en tête du lot 1)</label>
      <div class="acts left"><button class="btn primary" data-edsave="${esc(x.id)}">${ic('check')}Enregistrer la modification</button><button class="btn" data-cancel>Annuler</button><button class="btn" data-askdel="${esc(x.id)}">${ic('trash')}Supprimer</button></div></div>`:''}
    ${st.del===x.id?`<div class="panel warm delpanel"><b>Que faire de ce sujet ?</b><p class="muted" style="margin:4px 0 8px">« Retirer » le sort de la prière mais le garde dans la feuille (il pourra être remis). « Supprimer » efface sa ligne de la feuille du thème.</p>
+     ${aiOn()?`<label class="chk" style="margin-bottom:10px"><input type="checkbox" id="delRepl" ${replDefault()?'checked':''}><span>${ic('sparkle')}Le remplacer par un nouveau sujet écrit par Gemini (même thème, même place)</span></label>`:`<p class="muted note" style="margin:0 0 8px">Astuce : avec Gemini (Réglages ⚙), un sujet supprimé peut être remplacé automatiquement.</p>`}
      <div class="acts left"><button class="btn" data-ret="${esc(x.id)}">${ic('undo')}Retirer de la prière</button><button class="btn danger" data-delsubj="${esc(x.id)}">${ic('trash')}Supprimer définitivement</button><button class="btn" data-cancel>Annuler</button></div></div>`:''}
    ${st.open===x.id?`<div class="panel"><label class="f">Témoignage (facultatif)<textarea id="tem" placeholder="Ce que Dieu a fait…"></textarea></label>
      <label class="f">Nouveau sujet pour le remplacer (facultatif)<textarea id="remp" placeholder="Ce pour quoi prier ensuite sur ce même point…"></textarea><span style="font-weight:400">Il prendra sa place en tête du lot 1 de ce thème.</span></label>
@@ -359,9 +361,12 @@ function impCard(){
    <div class="tblwrap"><table class="imptab"><tbody>${I.rows.slice(0,300).map((r,i)=>`<tr${r.dup?' style="opacity:.45"':''}><td class="c">${i+1}</td><td>${esc(r.text)}</td><td class="c">${esc(impTarget(r))}${r.dup?' · déjà présent':''}</td></tr>`).join('')}</tbody></table></div>
    <div class="acts left mt"><button class="btn primary" id="impGo" ${ok.length&&!I.busy?'':'disabled'}>${I.busy?'Import en cours…':`Importer ${ok.length} sujet(s)`}</button><button class="btn" id="impCancel" ${I.busy?'disabled':''}>Annuler</button></div></div>`;
 }
-async function delSubjects(ids){const items=ids.map(id=>D.subj[id]).filter(Boolean).map(x=>({id:x.id,code:x.code}));if(!items.length)return;
+async function delSubjects(ids,repl){const old=ids.map(id=>D.subj[id]).filter(Boolean);const items=old.map(x=>({id:x.id,code:x.code}));if(!items.length)return;const ord={};old.forEach(x=>ord[x.id]=x.ordre);
   items.forEach(x=>{delete D.subj[x.id];delete prie[x.id];if(st.sel)delete st.sel[x.id]});ls.set('apg_prie_'+iso(today),prie);reindex();render(true);
-  await act('deleteSubjects',[items],items.length>1?items.length+' sujets supprimés.':'Sujet supprimé.')}
+  if(repl)toast('Gemini écrit '+(items.length>1?'les sujets':'le sujet')+' de remplacement…');
+  let r;try{r=await act('deleteSubjects',[items,!!repl],repl?null:(items.length>1?items.length+' sujets supprimés.':'Sujet supprimé.'))}catch(_){return}
+  if(r&&r.remplaces){r.remplaces.forEach(z=>{const s=z.s;D.subj[s[0]]={id:s[0],code:s[1],text:s[2],prio:s[3],statut:'Actif',ordre:ord[z.ancien]??s[5],dstatut:'',aj:0}});reindex();render(true);
+    const m=r.remplaces.length;if(repl)toast(r.n+' supprimé'+(r.n>1?'s':'')+(m?' · '+m+' remplacé'+(m>1?'s':'')+' par Gemini':'')+(r.avert?' · '+r.avert:'')+'.')}}
 async function retSubjects(ids){const items=ids.map(id=>D.subj[id]).filter(x=>x&&x.statut==='Actif');items.forEach(x=>{x.statut='Retiré';x.dstatut=iso(today);if(st.sel)delete st.sel[x.id]});reindex();render(true);
   for(const x of items)await act('setStatut',[x.id,'Retiré',{code:x.code}]).catch(()=>{});toast(items.length+' sujet'+(items.length>1?'s':'')+' retiré'+(items.length>1?'s':'')+' de la prière.')}
 document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
@@ -370,13 +375,14 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button');i
   else if(d.selall!==undefined){st.sel={};d.selall.split(',').filter(Boolean).forEach(id=>st.sel[id]=true);render(true)}
   else if(b.id==='selNone'){st.sel={};st.selAsk=null;render(true)}
   else if(b.id==='selRet'){st.selAsk='ret';render(true)}else if(b.id==='selDel'){st.selAsk='del';render(true)}else if(b.id==='selNo'){st.selAsk=null;render(true)}
-  else if(b.id==='selOk'){const ids=Object.keys(st.sel).filter(k=>st.sel[k]);const a=st.selAsk;st.selAsk=null;if(a==='del')await delSubjects(ids);else await retSubjects(ids)}});
+  else if(b.id==='selOk'){const ids=Object.keys(st.sel).filter(k=>st.sel[k]);const a=st.selAsk;const rp=!!($('#selRepl')&&$('#selRepl').checked);st.selAsk=null;if(a==='del')await delSubjects(ids,rp);else await retSubjects(ids)}});
 document.addEventListener('change',e=>{const t=e.target;if(t.dataset&&t.dataset.sel){st.sel[t.dataset.sel]=t.checked;render(true)}});
 function selBar(ids){const n=Object.keys(st.sel||{}).filter(k=>st.sel[k]).length;
   if(!st.selMode)return `<div class="acts left" style="margin:0 0 10px"><button class="btn small" id="selOn">${ic('check')}Sélectionner plusieurs sujets</button><span class="muted" style="font-size:.85rem">pour les retirer ou les supprimer d’un coup</span></div>`;
   return `<div class="card selbar"><div class="acts left" style="align-items:center"><b style="flex:1 1 160px">${n} sujet${n>1?'s':''} sélectionné${n>1?'s':''}</b>
    <button class="btn small" data-selall="${esc(ids.join(','))}">Tout sélectionner (${ids.length})</button>${n?'<button class="btn small" id="selNone">Tout désélectionner</button>':''}</div>
    ${st.selAsk?`<p class="mt" style="margin-bottom:6px"><b>${st.selAsk==='del'?`Supprimer définitivement ${n} sujet${n>1?'s':''} ?`:`Retirer ${n} sujet${n>1?'s':''} de la prière ?`}</b> ${st.selAsk==='del'?'Leurs lignes seront effacées des feuilles thèmes.':'Ils resteront dans les feuilles et pourront être remis.'}</p>
+     ${st.selAsk==='del'&&aiOn()?`<label class="chk" style="margin-bottom:8px"><input type="checkbox" id="selRepl" ${replDefault()?'checked':''}><span>${ic('sparkle')}Les remplacer par de nouveaux sujets écrits par Gemini</span></label>`:''}
      <div class="acts left"><button class="btn ${st.selAsk==='del'?'danger':'primary'}" id="selOk">Oui, ${st.selAsk==='del'?'supprimer':'retirer'}</button><button class="btn" id="selNo">Non</button></div>`
    :`<div class="acts left mt"><button class="btn" id="selRet" ${n?'':'disabled'}>${ic('undo')}Retirer de la prière</button><button class="btn danger" id="selDel" ${n?'':'disabled'}>${ic('trash')}Supprimer définitivement</button><button class="btn" id="selOff">Terminer</button></div>`}</div>`}
 function vThemes(){
@@ -387,7 +393,7 @@ function vThemes(){
   else if(!t)body=gestCard(null)+`<div class="empty">Aucun thème pour ce jour. Créez-en un ci-dessus.</div>`;
   else{const N=LOT();let html='';all.forEach((x,i)=>{if(i%N===0)html+=`<li class="lotsep">Lot ${i/N+1}</li>`;html+=subjLi(x,i+1,false)});
     const ret=Object.values(D.subj).filter(s=>s.code===t.c&&s.statut==='Retiré');
-    body=gestCard(t)+impCard()+selBar(all.map(x=>x.id))+`<div class="card"><div class="row"><label class="f" style="flex:3 1 260px">Nouveau sujet pour « ${esc(t.t)} »<input type="text" id="newTx" placeholder="Disons au Seigneur : …"></label><label class="inl" style="flex:0 0 auto"><input type="checkbox" id="newPrio" checked> Prioritaire ★</label><button class="btn primary" id="addBtn" style="flex:0 0 auto">${ic('plus')}Ajouter</button></div></div>
+    body=gestCard(t)+(AI.ctx==='theme'?aiCard('theme'):`<div class="acts left" style="margin:0 0 10px">${aiBtn('theme')}<span class="muted" style="font-size:.85rem">nouveaux sujets ou mise à jour, à partir d’une description</span></div>`)+impCard()+selBar(all.map(x=>x.id))+`<div class="card"><div class="row"><label class="f" style="flex:3 1 260px">Nouveau sujet pour « ${esc(t.t)} »<input type="text" id="newTx" placeholder="Disons au Seigneur : …"></label><label class="inl" style="flex:0 0 auto"><input type="checkbox" id="newPrio" checked> Prioritaire ★</label><button class="btn primary" id="addBtn" style="flex:0 0 auto">${ic('plus')}Ajouter</button></div></div>
      <section class="theme" style="--cat:${catStyle(t.k)[0]}"><div class="thead"><span class="ticon">${ic(catStyle(t.k)[1])}</span><div class="tmeta"><div class="code"><span class="chip">${esc(t.k)}</span>${esc(t.c)} · ${all.length} sujets actifs · ${Math.max(1,Math.ceil(all.length/N))} lots</div><h3>${esc(t.t)}</h3></div></div><ol class="subj">${html}</ol></section>
      ${ret.length?`<h2>Sujets retirés</h2><div class="theme">${ret.map(s=>`<div class="ex"><div>${esc(s.text)}</div><div class="meta">Retiré le ${fmt(s.dstatut)} <button class="btn small" data-restore="${esc(s.id)}">${ic('undo')}Remettre en prière</button><button class="btn small" data-delsubj="${esc(s.id)}">${ic('trash')}Supprimer définitivement</button></div></div>`).join('')}</div>`:''}`}
   return rwCard()+`<div class="row" style="margin-bottom:12px"><label class="f">Jour<select id="thDay">${['TOUS LES JOURS',...DAYS].map(d=>`<option ${d===st.thDay?'selected':''}>${d}</option>`).join('')}</select></label>
@@ -428,10 +434,11 @@ function egliseWeek(){
   <div class="days">${chips}</div>
   <div class="card"><div class="row"><label class="f" style="flex:2 1 220px">Thème ou activité du ${JOURS7[i].toLowerCase()} ${jma(d0)}<input type="text" id="ceTitre" value="${esc(v.titre)}" placeholder="ex. Prière de midi à l'assemblée"></label><label class="f">Conducteur<input type="text" id="ceCond" value="${esc(v.cond)}" placeholder="ex. Paul"></label></div></div>
   <div class="summary s3"><div><b>${filled}</b><span>Sujets rédigés</span></div><div><b>${hm(filled*num('secondes',30)/60)}</b><span>Durée de la séance</span></div><div><b>${nd}/${filled}</b><span>Priés</span><div class="bar"><i style="width:${filled?nd/filled*100:0}%"></i></div></div></div>
-  <div class="acts left" style="margin-bottom:10px">${filled?`<button class="btn primary" id="runCe">${ic('play')}Commencer la séance</button>${nd<filled?`<button class="btn ok" id="allCe">${ic('check')}Valider toute la séance</button>`:''}${nd?`<button class="btn" id="noneCe">${ic('undo')}Tout décocher</button>`:''}`:''}<span class="inl"><button class="btn" id="ceFill">${ic('wand')}Générer</button><input type="number" id="ceN" min="1" max="500" value="${ls.get('apg_cen',20)}" style="width:76px" aria-label="Nombre de sujets à générer"><span class="muted">sujets de plus</span></span>
+  <div class="acts left" style="margin-bottom:10px">${filled?`<button class="btn primary" id="runCe">${ic('play')}Commencer la séance</button>${nd<filled?`<button class="btn ok" id="allCe">${ic('check')}Valider toute la séance</button>`:''}${nd?`<button class="btn" id="noneCe">${ic('undo')}Tout décocher</button>`:''}`:''}${aiBtn('eglise')}<span class="inl"><button class="btn" id="ceFill">${ic('wand')}Générer</button><input type="number" id="ceN" min="1" max="500" value="${ls.get('apg_cen',20)}" style="width:76px" aria-label="Nombre de sujets à générer"><span class="muted">sujets de plus</span></span>
    ${st.ceConfirm==='regen'?`<span class="muted">Remplacer les ${filled} sujets écrits ?</span><button class="btn" id="ceRegenOk">Oui, tout régénérer</button><button class="btn" id="ceNo">Non</button>`
    :st.ceConfirm==='clear'?`<span class="muted">Effacer les ${filled} sujets de ce jour ?</span><button class="btn" id="ceClearOk">Oui, tout effacer</button><button class="btn" id="ceNo">Non</button>`
    :`<button class="btn" id="ceRegen" ${filled?'':'disabled'}>Tout régénérer</button><button class="btn" id="ceClearAll" ${filled?'':'disabled'}>Tout effacer</button><button class="btn" id="ceCopyPrev">${ic('copy')}Reprendre la semaine précédente</button>`}</div>
+  ${aiCard('eglise')}
   <p class="muted note">Les sujets générés viennent des thèmes du ${(SET().sourceEglise||'SAMEDI').toLowerCase()} (modifiable dans les Réglages) et changent chaque semaine. Chaque sujet reste modifiable.</p>
   <section class="theme" style="--cat:#D33F49"><ol class="subj">${li}</ol></section>`;
 }
@@ -519,8 +526,8 @@ function nightView(n){
    <div class="dict-live" id="dictLive" ${dict.on?'':'hidden'}>${esc(dict.buf)} <i>${esc(dict.interim)}</i></div>
    <div class="acts left mt">${dict.on?`<button class="btn primary small" id="dictOk">${ic('check')}Valider ce sujet</button><button class="btn small" id="dictUndo">${ic('undo')}Effacer la phrase</button>`:''}
    <label class="inl muted"><input type="checkbox" id="dictAuto" ${dict.auto?'checked':''}> Un sujet à chaque pause</label></div></div>
-  <div class="acts left" style="margin-bottom:12px"><button class="btn" id="nGenBtn">${ic('wand')}Générer depuis un thème</button><button class="btn" id="nPasteBtn">${ic('list')}Coller plusieurs sujets</button><button class="btn" id="nCopy">${ic('copy')}Copier la liste</button><button class="btn" id="nDelNight">${ic('trash')}Supprimer la nuit</button></div>
-  ${st.nGen?nGenCard(n):''}
+  <div class="acts left" style="margin-bottom:12px">${aiBtn('nuit')}<button class="btn" id="nGenBtn">${ic('wand')}Générer depuis un thème</button><button class="btn" id="nPasteBtn">${ic('list')}Coller plusieurs sujets</button><button class="btn" id="nCopy">${ic('copy')}Copier la liste</button><button class="btn" id="nDelNight">${ic('trash')}Supprimer la nuit</button></div>
+  ${aiCard('nuit')}${st.nGen?nGenCard(n):''}
   ${st.nPaste?`<div class="card imp"><label class="f">Un sujet par ligne. Ils se placent à partir du n° ${nextEmpty+1}.<textarea id="nPaste" rows="6" placeholder="Disons au Seigneur : …\nBrisons …"></textarea></label><div class="acts left mt"><button class="btn primary" id="nPasteGo">${ic('plus')}Ajouter à la suite</button><button class="btn" id="nPasteNo">Annuler</button></div></div>`:''}
   ${st.nDelAsk?`<div class="card panel warm"><b>Supprimer « ${esc(n.titre||'cette nuit')} » et ses ${filled} sujets ?</b><div class="acts left"><button class="btn primary" id="nDelOk">Oui, supprimer</button><button class="btn" id="nDelNo">Non</button></div></div>`:''}
   <section class="theme" style="--cat:#4B2E91"><div class="thead"><span class="ticon">${ic('moon')}</span><div class="tmeta"><div class="code"><span class="chip">NUIT</span>${filled} sujet${filled>1?'s':''} · ${hm(filled*n.sec/60)}</div><h3>Sujets de la nuit</h3></div></div>
@@ -877,7 +884,7 @@ function vReglages(){
    <div class="row mt"><label class="f" style="flex:2 1 220px">Nouvelle catégorie<input type="text" id="catNew" placeholder="ex. MALADES, VOYAGES"></label><button class="btn primary" id="catAdd" style="flex:0 0 auto">Ajouter</button></div></div>
   <div class="card"><b class="ctitle">${ic('church')}Programme de l'église</b><div class="row mt"><label class="f">Jour d'où viennent les sujets générés<select id="setSrc">${DAYS.map(d=>`<option ${d===(s.sourceEglise||'SAMEDI')?'selected':''}>${d}</option>`).join('')}</select></label></div>
    <p class="muted mt">Types d'activités : ${list_('evTypes').map(x=>`<span class="chip">${esc(x)} <button class="btn small" data-deltype="${esc(x)}" aria-label="Supprimer ${esc(x)}">×</button></span>`).join(' ')}</p></div>
-  ${pwdCard()}
+  ${geminiCard()}${pwdCard()}
   <div class="card"><b class="ctitle">${ic('link')}Application et connexion</b>
    <div class="row mt"><label class="f" style="flex:2 1 220px">Prénom sur cet appareil (journal de prière)<input type="text" id="setMe" value="${esc((CFG&&CFG.me)||'')}"></label></div>
    <p class="mt"><b>Connexion au serveur :</b> ${hb.at?(hb.ok?`<span style="color:var(--ok);font-weight:700">connecté</span>, vérifié à ${hm24(new Date(hb.at))}`:`<span style="color:#D33F49;font-weight:700">injoignable</span> depuis ${hm24(new Date(hb.at))}`):'pas encore vérifiée'} <button class="btn small" id="testConn">${ic('refresh')}Tester maintenant</button></p>
@@ -1031,6 +1038,93 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-xp]'
   b.disabled=true;try{const ext=b.dataset.xp;const blob=ext==='docx'?docxBlob(S.title,S.sub,S.blocks):xlsxBlob(S.sheets);
     await saveBlob(blob,'Autel_'+fnSafe(S.name)+'.'+ext,MIME[ext])}catch(err){console.error(err);toast('Export impossible : '+err.message)}finally{b.disabled=false}});
 
+/* ================= Gemini : écrire, mettre à jour et remplacer des sujets avec l'IA ================= */
+const aiOn=()=>!!(D.ai&&D.ai.on);
+const replDefault=()=>aiOn()&&String(SET().remplacerAuto||'Oui')!=='Non';
+const AI={ctx:null,mode:'gen',busy:false,items:null,err:'',desc:'',instr:'',n:10,scope:'lot'};
+function aiTarget(){if(AI.ctx==='theme'){const t=byCode(st.thCode);return t?{label:'le thème « '+t.t+' »',to:'au thème « '+t.t+' »',code:t.c}:null}
+  if(AI.ctx==='nuit'){const n=curNight();return n?{label:'cette nuit',to:'à la nuit',night:n}:null}
+  if(AI.ctx==='eglise')return {label:'le '+JOURS7[st.ceDay].toLowerCase(),to:'au '+JOURS7[st.ceDay].toLowerCase()};return null}
+function aiBtn(ctx){return `<button class="btn ai" data-aiopen="${ctx}">${ic('sparkle')}Écrire avec Gemini</button>`}
+function aiCard(ctx){if(AI.ctx!==ctx)return '';const T=aiTarget();if(!T)return '';
+  if(!aiOn())return `<div class="card aic"><b class="ctitle">${ic('sparkle')}Gemini — écrire avec l’IA</b><p class="muted mt">Gemini n’est pas encore configuré. Ajoutez votre clé (gratuite) dans <b>Réglages ⚙ › Gemini</b>.</p><div class="acts left"><button class="btn primary" id="aiToSet">${ic('gear')}Ouvrir les Réglages</button><button class="btn" id="aiClose">Fermer</button></div></div>`;
+  const rw=AI.mode==='rw';const it=AI.items;const nOn=it?it.filter(x=>x.on).length:0;
+  const head=`<div class="aihead"><b class="ctitle">${ic('sparkle')}Gemini — ${rw?'mettre à jour des sujets':'nouveaux sujets'} pour ${esc(T.label)}</b>
+    ${ctx==='theme'?`<div class="seg" role="tablist"><button class="${rw?'':'on'}" data-aimode="gen" role="tab" aria-selected="${!rw}">Nouveaux sujets</button><button class="${rw?'on':''}" data-aimode="rw" role="tab" aria-selected="${rw}">Mettre à jour</button></div>`:''}</div>`;
+  let form;
+  if(!rw)form=`<label class="f mt">Décrivez ce que vous voulez<textarea id="aiDesc" rows="3" placeholder="ex. la santé de Gabriel et sa réussite aux examens ; la protection de la maison pendant les voyages ; la promotion de Tati au travail…">${esc(AI.desc)}</textarea></label>
+    <div class="row mt" style="align-items:flex-end"><label class="f" style="flex:0 1 130px">Combien<select id="aiN">${[5,10,20,30,50,100].map(v=>`<option ${v===AI.n?'selected':''}>${v}</option>`).join('')}</select></label>
+    <button class="btn primary" id="aiGo" style="flex:0 0 auto" ${AI.busy?'disabled':''}>${ic('sparkle')}${AI.busy?'Gemini écrit…':'Générer avec Gemini'}</button></div>`;
+  else{const t=byCode(st.thCode);const a=subjects(t.c);const nSel=Object.keys(st.sel||{}).filter(k=>st.sel[k]&&D.subj[k]&&D.subj[k].code===t.c).length;
+    form=`<label class="f mt">Que faut-il changer ?<textarea id="aiInstr" rows="2" placeholder="ex. rendre les sujets plus courts ; ajouter « au nom de Jésus » ; parler de notre famille (Thierry, Tati et les enfants) ; enlever les références bibliques">${esc(AI.instr)}</textarea></label>
+    <div class="row mt" style="align-items:flex-end"><label class="f" style="flex:1 1 220px">Quels sujets<select id="aiScope">
+      <option value="lot" ${AI.scope==='lot'?'selected':''}>Le lot de cette semaine (${Math.min(LOT(),a.length)})</option>
+      ${[20,50,100].filter(v=>v<a.length).map(v=>`<option value="${v}" ${AI.scope==v?'selected':''}>Les ${v} premiers</option>`).join('')}
+      <option value="all" ${AI.scope==='all'?'selected':''}>Tout le thème (${a.length})</option>
+      ${nSel?`<option value="sel" ${AI.scope==='sel'?'selected':''}>Les ${nSel} sujets sélectionnés</option>`:''}</select></label>
+    <button class="btn primary" id="aiGo" style="flex:0 0 auto" ${AI.busy?'disabled':''}>${ic('sparkle')}${AI.busy?'Gemini réfléchit…':'Proposer les changements'}</button></div>`}
+  let res='';
+  if(AI.err)res=`<p class="lk-msg aierr">${esc(AI.err)}</p>`;
+  if(it&&it.length){res+=`<div class="aires"><div class="acts left" style="align-items:center"><b style="flex:1 1 auto">${rw?'Changements proposés':'Sujets proposés'} : ${it.length}</b><button class="btn small" id="aiAll">Tout cocher</button><button class="btn small" id="aiNone">Tout décocher</button></div>
+     <ol class="ailist">${it.map((x,k)=>`<li class="${x.on?'':'off'}"><input type="checkbox" data-aion="${k}" ${x.on?'checked':''} aria-label="Garder ce sujet">${rw?`<div><s>${esc(x.old)}</s><textarea data-aitx="${k}" rows="2">${esc(x.text)}</textarea></div>`:`<textarea data-aitx="${k}" rows="2">${esc(x.text)}</textarea>`}</li>`).join('')}</ol>
+     <div class="acts left mt"><button class="btn primary" id="aiApply" ${nOn?'':'disabled'}>${ic('check')}${rw?`Appliquer ${nOn} changement${nOn>1?'s':''}`:`Ajouter ${nOn} sujet${nOn>1?'s':''} ${esc(T.to)}`}</button><button class="btn" id="aiGo2" ${AI.busy?'disabled':''}>${ic('undo')}Proposer d’autres</button></div>
+     <p class="muted note">Relisez et corrigez chaque sujet si besoin : rien n’est enregistré avant d’appuyer sur le bouton.${rw?' Les changements sont gardés dans la feuille REFORMULATIONS et peuvent être annulés (Thèmes › Reformuler comme moi › Annuler).':''}</p></div>`}
+  else if(it&&!it.length)res+=`<p class="muted mt">Gemini n’a rien proposé de nouveau. Précisez la description et réessayez.</p>`;
+  return `<div class="card aic open">${head}${form}${res}<div class="acts left mt"><button class="btn small" id="aiClose">Fermer Gemini</button></div><p class="muted note">Le texte envoyé à Gemini (Google) : votre description et les sujets du thème. Évitez d’y mettre des informations très personnelles que vous ne voulez pas confier à Google.</p></div>`}
+function aiRead(){const d=$('#aiDesc'),i=$('#aiInstr'),n=$('#aiN'),s=$('#aiScope');if(d)AI.desc=d.value;if(i)AI.instr=i.value;if(n)AI.n=+n.value;if(s)AI.scope=s.value;
+  if(AI.items)document.querySelectorAll('[data-aitx]').forEach(t=>{const x=AI.items[+t.dataset.aitx];if(x)x.text=t.value.trim()})}
+async function aiRun(){aiRead();const T=aiTarget();if(!T)return;AI.err='';
+  let fn,arg;
+  if(AI.mode==='gen'){if(AI.desc.trim().length<3&&AI.ctx!=='theme'){toast('Décrivez en quelques mots ce que vous voulez.');return}
+    const ex=AI.ctx==='nuit'?(T.night.items||[]).filter(Boolean):AI.ctx==='eglise'?dayData(st.ceDay).items.filter(Boolean):[];
+    fn='aiGenerate';arg={desc:AI.desc.trim(),n:AI.n,code:T.code||'',existants:ex.slice(-80),cadre:AI.ctx==='theme'?'theme':AI.ctx}}
+  else{const t=byCode(st.thCode);let a=subjects(t.c);const N=LOT();
+    if(AI.scope==='lot'){const l=lotFor(t.c,a.length);a=a.slice(l*N,l*N+N)}else if(AI.scope==='sel')a=a.filter(x=>st.sel&&st.sel[x.id]);else if(AI.scope!=='all')a=a.slice(0,+AI.scope);
+    if(!a.length){toast('Aucun sujet à mettre à jour.');return}if(!AI.instr.trim()){toast('Écrivez ce qu’il faut changer.');return}
+    fn='aiRewrite';arg=a.map(x=>({id:x.id,text:x.text}))}
+  AI.busy=true;render(true);
+  try{let out=[];
+    if(fn==='aiGenerate'){const r=await call('aiGenerate',arg);out=(r.items||[]).map(t=>({text:t,on:true}))}
+    else{for(let i=0;i<arg.length;i+=50){const r=await call('aiRewrite',{instr:AI.instr.trim(),code:st.thCode,items:arg.slice(i,i+50)});out=out.concat((r.items||[]).map(x=>({id:x.id,old:x.old,text:x.text,on:true})))}}
+    AI.items=out}
+  catch(e){AI.err=e instanceof NetErr?'Gemini demande internet : reconnectez-vous puis réessayez.':e.message;if(e.code==='NOGEM'&&D.ai)D.ai.on=false}
+  finally{AI.busy=false;render(true)}}
+async function aiApply(){aiRead();const T=aiTarget();const keep=(AI.items||[]).filter(x=>x.on&&x.text);if(!T||!keep.length)return;
+  if(AI.mode==='rw'){const ch=keep.map(x=>({id:x.id,text:x.text,code:st.thCode}));
+    try{const r=await act('applyRewrite',[ch,'Gemini : '+AI.instr.trim()]);if(r&&r.n){ch.forEach(c=>{const x=D.subj[c.id];if(x){x.text=c.text;x.aj=1}});D.rewrite={lot:r.lot,date:r.date,n:r.n};reindex();RW=null;AI.items=null;render(true);toast(r.n+' sujet'+(r.n>1?'s':'')+' mis à jour par Gemini. Vous pouvez annuler.')}}catch(_){}
+    return}
+  const txt=keep.map(x=>x.text);
+  if(AI.ctx==='theme'){try{const r=await act('addSubjects',[txt.map(t=>({text:t,prio:0,code:T.code}))]);(r||[]).forEach(s=>D.subj[s[0]]={id:s[0],code:s[1],text:s[2],prio:s[3],statut:s[4],ordre:s[5],dstatut:s[6]||'',aj:0});reindex();AI.items=null;render(true);toast(txt.length+' sujet'+(txt.length>1?'s':'')+' ajouté'+(txt.length>1?'s':'')+' au thème.')}catch(_){}}
+  else if(AI.ctx==='nuit'){const n=T.night;n.items=(n.items||[]).slice();let i=0;txt.forEach(t=>{while(n.items[i])i++;n.items[i]=t;i++});saveNightSoon(n);AI.items=null;render(true);toast(txt.length+' sujets ajoutés à la nuit · durée '+hm(nDur(n))+'.')}
+  else if(AI.ctx==='eglise'){const v=dayData(st.ceDay);const items=v.items.slice();let i=0;txt.forEach(t=>{while(items[i])i++;items[i]=t;i++});AI.items=null;await saveDayLocal(st.ceDay,{items});toast(txt.length+' sujets ajoutés au '+JOURS7[st.ceDay].toLowerCase()+'.')}}
+document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+  if(d.aiopen){const same=AI.ctx===d.aiopen;Object.assign(AI,{ctx:same?null:d.aiopen,items:null,err:'',mode:'gen'});render(true);if(!same)setTimeout(()=>{const x=$('#aiDesc');if(x){x.focus();x.closest('.card').scrollIntoView({block:'nearest'})}},50)}
+  else if(d.aimode){aiRead();AI.mode=d.aimode;AI.items=null;AI.err='';render(true)}
+  else if(b.id==='aiClose'){AI.ctx=null;AI.items=null;render(true)}
+  else if(b.id==='aiToSet'){AI.ctx=null;st.tab='reglages';render()}
+  else if(b.id==='aiGo'||b.id==='aiGo2')await aiRun();
+  else if(b.id==='aiApply'){b.disabled=true;await aiApply()}
+  else if(b.id==='aiAll'||b.id==='aiNone'){aiRead();(AI.items||[]).forEach(x=>x.on=b.id==='aiAll');render(true)}});
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset&&t.dataset.aion!==undefined&&AI.items){aiRead();AI.items[+t.dataset.aion].on=t.checked;render(true)}});
+/* ----- Réglages › Gemini ----- */
+function geminiCard(){const on=aiOn();const s=D.aiSt;if(on&&!s&&!geminiCard.busy){geminiCard.busy=1;call('aiStatus').then(r=>{D.aiSt=r;if(st.tab==='reglages')render(true)}).catch(()=>{}).finally(()=>geminiCard.busy=0)}
+  return `<div class="card aic"><b class="ctitle">${ic('sparkle')}Gemini (IA de Google)</b>
+   <p class="muted mt">Avec Gemini, l’application peut écrire de nouveaux sujets à partir d’une description, mettre à jour des sujets existants, et remplacer automatiquement un sujet supprimé. Il faut internet.</p>
+   <p class="mt"><span class="dot" style="background:${on?'#2ECC71':'#E74C3C'}"></span>${on?`Configuré${s&&s.masque?' · clé '+esc(s.masque):''}${s&&s.model?' · modèle '+esc(s.model):''}`:'Pas encore configuré'}</p>
+   <div class="row mt" style="align-items:flex-end"><label class="f" style="flex:2 1 260px">${on?'Nouvelle clé Gemini':'Clé Gemini'}<input type="password" id="gemKey" autocomplete="off" placeholder="AIza…"></label>
+    <button class="btn primary" id="gemSave" style="flex:0 0 auto">${ic('check')}Enregistrer et tester</button>${on?`<button class="btn" id="gemDel" style="flex:0 0 auto">${ic('trash')}Effacer la clé</button>`:''}</div>
+   <label class="chk mt"><input type="checkbox" id="gemRepl" ${String(SET().remplacerAuto||'Oui')!=='Non'?'checked':''}><span>Quand je supprime un sujet, Gemini le remplace automatiquement par un nouveau (même thème, même place)</span></label>
+   <details class="mt"><summary><b>Obtenir une clé gratuite (2 minutes)</b></summary><ol class="steps-s">
+    <li>Sur l’ordinateur ou le téléphone, ouvrez <b>aistudio.google.com</b> et connectez-vous avec votre compte Google.</li>
+    <li>Touchez <b>Get API key</b> (Obtenir une clé API), puis <b>Create API key</b>.</li>
+    <li>Copiez la clé (elle commence souvent par « AIza ») et collez-la ci-dessus, puis « Enregistrer et tester ».</li>
+    <li>La clé reste sur le serveur (Apps Script), jamais dans la feuille ni sur les téléphones. Une seule clé suffit pour toute la famille.</li></ol></details></div>`}
+document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.id==='gemSave'||b.id==='gemDel'){const k=b.id==='gemDel'?'':($('#gemKey').value||'').trim();if(b.id==='gemSave'&&!k){toast('Collez d’abord la clé Gemini.');return}
+    b.disabled=true;try{const r=await call('setGeminiKey',k);D.aiSt=r;D.ai={on:r.configured};toast(r.configured?'Gemini fonctionne ('+r.model+').':'Clé Gemini effacée.');render(true)}
+    catch(err){toast(err instanceof NetErr?'Il faut internet pour tester la clé.':err.message)}finally{b.disabled=false}}});
+document.addEventListener('change',async e=>{if(e.target.id==='gemRepl'){const v=e.target.checked?'Oui':'Non';D.settings.remplacerAuto=v;try{await act('saveSettings',[{remplacerAuto:v}],v==='Oui'?'Remplacement automatique activé.':'Remplacement automatique désactivé.')}catch(_){}}});
+
 /* ================= Rendu ================= */
 const TABS={jour:['Prière du jour','flame'],nuit:['Nuit de prière','moon'],chants:['Louange et adoration','music'],themes:['Thèmes et sujets','book'],exauces:['Sujets exaucés','star'],eglise:["Programme de l'église",'church'],reglages:['Réglages','sliders']};
 const KEEP=['ngKey','chNewLouange','chNewAdoration','pwOld','pwNew','pwNew2','chNew','chNewA','chBulkTx','chEdT','chEdA','chEdK','chEdL','chEdN','nTitre','nPaste','nEdTx','nTitreEd','setMe','cfUrl','cfKey','cfMe','edTx','tem','remp','temd','ceTx','ceTitre','ceCond','evTi','evS','evR','evTn','gName','gCatNew','libTx','libTem','catNew','setFoyer'];
@@ -1063,7 +1157,7 @@ document.addEventListener('click',async e=>{
   else if(d.exa){st.open=st.open===d.exa?null:d.exa;st.edit=null;render(true);setTimeout(()=>$('#tem')?.focus(),0)}
   else if(d.cancel!==undefined){st.open=null;st.edit=null;st.del=null;render(true)}
   else if(d.askdel){st.del=st.del===d.askdel?null:d.askdel;st.edit=null;st.open=null;render(true)}
-  else if(d.delsubj){st.del=null;await delSubjects([d.delsubj])}
+  else if(d.delsubj){const rp=!!($('#delRepl')&&$('#delRepl').checked&&b.closest('.delpanel'));st.del=null;await delSubjects([d.delsubj],rp)}
   else if(d.conf){const[t,x]=findSubj(d.conf);if(!x)return;const rp=$('#remp').value.trim(),dt=dv('temd')||iso(today),nt=$('#tem').value.trim();st.open=null;
     x.statut='Exaucé';x.dstatut=dt;D.exauces.push({date:dt,id:x.id,code:x.code,theme:t.t,text:x.text,note:nt,remplace:rp,par:D.me});reindex();render(true);
     const created=await act('setStatut',[x.id,'Exaucé',{date:dt,note:nt,remplacement:rp,theme:t.t,code:x.code}],rp?'Gloire à Dieu ! Sujet exaucé et remplacé.':'Gloire à Dieu ! Sujet noté comme exaucé.');
