@@ -51,6 +51,9 @@ function lotFor(code,n){const L=Math.max(1,Math.ceil(n/LOT()));const w=weekIndex
 
 /* ================= Icônes ================= */
 const ICONS={
+ car:'<path d="M5 17h14v-5l-2-5H7l-2 5z"/><path d="M5 12h14"/><circle cx="8" cy="17" r="2"/><circle cx="16" cy="17" r="2"/>',
+ vol:'<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>',
+ volx:'<path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 6"/><path d="m21 9-5 6"/>',
  sparkle:'<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
  flame:'<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
  book:'<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/>',
@@ -296,7 +299,7 @@ function vJour(){
   const jd=Object.values(D.journal);const complets=jd.filter(v=>v.t&&v.f>=v.t).length;
   return `<div class="opts"><span class="inl">${ic('star')} ${exaW} exaucement${exaW>1?'s':''} cette semaine</span><span class="inl">${ic('flame')} ${complets} jour${complets>1?'s':''} accompli${complets>1?'s':''} ce mois</span>
   <label><input type="checkbox" id="commDay" ${showCommun?'checked':''}> Thèmes communs ce jour-là</label></div>
-  ${st.day===todayDay()&&tot?`<div class="acts left" style="margin:0 0 14px"><button class="btn primary" id="runJour">${ic('play')}Commencer la séance (${Math.floor(min/60)?Math.floor(min/60)+' h ':''}${min%60} min)</button>${(()=>{const ids=jourIds();const nd=ids.filter(id=>prie[id]).length;return (nd<ids.length?`<button class="btn ok" id="allJour">${ic('check')}Valider toute la séance</button>`:'')+(nd?`<button class="btn" id="noneJour">${ic('undo')}Tout décocher</button>`:'')})()}</div>`:''}
+  ${st.day===todayDay()&&tot?`<div class="acts left" style="margin:0 0 14px"><button class="btn primary" id="runJour">${ic('play')}Commencer la séance (${Math.floor(min/60)?Math.floor(min/60)+' h ':''}${min%60} min)</button><button class="btn car" id="runCar">${ic('car')}Prier en voiture (à voix haute)</button>${(()=>{const ids=jourIds();const nd=ids.filter(id=>prie[id]).length;return (nd<ids.length?`<button class="btn ok" id="allJour">${ic('check')}Valider toute la séance</button>`:'')+(nd?`<button class="btn" id="noneJour">${ic('undo')}Tout décocher</button>`:'')})()}</div>`:''}
   ${th.length?'<div class="tgrid">'+th.map(themeCard).join('')+'</div>':`<div class="empty">Aucun thème pour ce jour. Créez-en un dans l'onglet « Thèmes », ou déplacez-y un thème existant.</div>`}`;
 }
 
@@ -603,11 +606,11 @@ function runOpen(){const n=curNight();if(!n)return;const L=runList(n);if(!L.leng
   runStart({list:L,k,sec:+n.sec||30,title:n.titre||'Nuit de prière',end:'Nuit accomplie',mark:i=>markPrie(n,i)})}
 /* séance générique : list = [[numéro affiché (0 = 1er), texte, clé]] ; mark(clé) note le sujet comme prié */
 function runStart(o2){if(!o2.list.length)return;
-  Object.assign(run,{on:true,k:o2.k||0,start:Date.now(),paused:false,done:false,elapsed:0,list:o2.list,sec:o2.sec||30,title:o2.title,endTitle:o2.end||'Séance accomplie',mark:o2.mark||(()=>{}),after:o2.after||null});
+  Object.assign(run,{on:true,k:o2.k||0,firstK:o2.k||0,voice:o2.voice??VOX().on,spokenK:-1,speaking:false,start:Date.now(),paused:false,done:false,elapsed:0,list:o2.list,sec:o2.sec||30,title:o2.title,endTitle:o2.end||'Séance accomplie',mark:o2.mark||(()=>{}),after:o2.after||null});
   let o=$('#runner');if(!o){o=document.createElement('div');o.id='runner';o.setAttribute('role','dialog');o.setAttribute('aria-label','Nuit de prière en cours');document.body.appendChild(o)}
-  o.hidden=false;document.body.style.overflow='hidden';wake();clearInterval(run.iv);run.iv=setInterval(runTick,250);runPaint(true)}
-function runClose(){run.on=false;if(run.after)try{run.after()}catch(_){}clearInterval(run.iv);const o=$('#runner');if(o)o.hidden=true;document.body.style.overflow='';try{run.lock&&run.lock.release()}catch(_){}run.lock=null;render(true)}
-function runTick(){if(!run.on||run.paused)return;const S=run.sec*1000;const t=Date.now()-run.start;
+  o.hidden=false;document.body.style.overflow='hidden';wake();clearInterval(run.iv);run.iv=setInterval(runTick,250);if(run.voice){if(TTS)voxMedia(true);else run.voice=false}runPaint(true)}
+function runClose(){run.on=false;voxStop();voxMedia(false);if(run.after)try{run.after()}catch(_){}clearInterval(run.iv);const o=$('#runner');if(o)o.hidden=true;document.body.style.overflow='';try{run.lock&&run.lock.release()}catch(_){}run.lock=null;render(true)}
+function runTick(){if(!run.on||run.paused||run.speaking)return;const S=run.sec*1000;const t=Date.now()-run.start;
   if(t>=S){run.mark(run.list[run.k][2]??run.list[run.k][0]);if(run.k<run.list.length-1){run.k++;run.start=Date.now();try{navigator.vibrate&&navigator.vibrate(60)}catch(_){}runPaint(true)}else{run.done=true;runPaint(true);clearInterval(run.iv)}return}
   runPaint(false)}
 /* séances « Prière du jour » et « Prières de la semaine » : même déroulé que la nuit */
@@ -620,32 +623,104 @@ document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
   else if(b.id==='allNuit'||b.id==='noneNuit'){const n=curNight();if(!n)return;const p=nPrie(n.id);const ks=(n.items||[]).map((x,k)=>x?k:-1).filter(k=>k>=0);const all=b.id==='noneNuit';
     ks.forEach(k=>{if(all)delete p[k];else p[k]=true});ls.set('apg_nprie_'+n.id,p);render(true);toast(all?'Nuit décochée.':`Nuit validée : ${ks.length} sujets priés.`)}
 });
-function runJour(){const N=LOT();const L=[];dayThemes(st.day).forEach(t=>{const a=subjects(t.c);const l=lotFor(t.c,a.length);lotItems(a,l,N).forEach(x=>L.push([L.length,x.text,x.id]))});
+function runJour(voice){const N=LOT();const L=[];dayThemes(st.day).forEach(t=>{const a=subjects(t.c);const l=lotFor(t.c,a.length);lotItems(a,l,N).forEach(x=>L.push([L.length,x.text,x.id,t.t]))});
   if(!L.length)return;let k=L.findIndex(x=>!prie[x[2]]);if(k<0)k=0;
-  runStart({list:L,k,sec:num('secondes',30),title:'Prière du jour',end:'Prière du jour accomplie',mark:id=>{prie[id]=true;ls.set('apg_prie_'+iso(today),prie);journalNow()}})}
+  if(voice===true)voxSet({on:true});runStart({list:L,k,voice:voice===true?true:undefined,sec:num('secondes',30),title:'Prière du jour',end:'Prière du jour accomplie',mark:id=>{prie[id]=true;ls.set('apg_prie_'+iso(today),prie);journalNow()}})}
 function runCe(){const i=st.ceDay;const v=dayData(i);const L=v.items.map((x,k)=>[k,x,k]).filter(x=>x[1]);if(!L.length)return;
   const pk='apg_ce_'+st.week+'_'+i;const done=ls.get(pk,{});let k=L.findIndex(x=>!done[x[2]]);if(k<0)k=0;
   runStart({list:L,k,sec:num('secondes',30),title:v.titre||('Prières du '+JOURS7[i].toLowerCase()),end:'Séance accomplie',mark:j=>{const d=ls.get(pk,{});d[j]=true;ls.set(pk,d)}})}
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='runJour')runJour();else if(b.id==='runCe')runCe()});
+
 function markPrie(n,i){const p=nPrie(n.id);p[i]=true;ls.set('apg_nprie_'+n.id,p)}
-function runPaint(full){const o=$('#runner');if(!o)return;const S=run.sec*1000;const L=run.list;const [idx,tx]=L[run.k];
+function runPaint(full){const o=$('#runner');if(!o)return;if(full&&run.voice&&!run.done&&!run.paused&&run.spokenK!==run.k)voxSubject();const S=run.sec*1000;const L=run.list;const [idx,tx]=L[run.k];
   const left=run.paused?run.pauseLeft:Math.max(0,S-(Date.now()-run.start));const C=2*Math.PI*54;const p=1-left/S;
   const restMin=((L.length-run.k-1)*S+left)/60000;
+  if(run.done&&run.voice&&!run.saidEnd){run.saidEnd=1;voxSay(run.endTitle+'. Gloire à Dieu.')}
   if(run.done){o.innerHTML=`<div class="rn-wrap rn-end">${ic('flame')}<h2>${esc(run.endTitle)}</h2><p>${L.length} sujets priés. Gloire à Dieu !</p><button class="btn primary" id="rnClose">${ic('check')}Terminer</button></div>`;return}
-  if(full){o.innerHTML=`<div class="rn-wrap"><div class="rn-top"><span>${esc(run.title)}</span><button class="hbtn" id="rnClose" aria-label="Quitter">${ic('x')}</button></div>
+  if(full){o.innerHTML=`<div class="rn-wrap"><div class="rn-top"><span>${esc(run.title)}</span><span class="rn-tb"><button class="hbtn vox${run.voice?' on':''}" id="rnVoice" aria-pressed="${!!run.voice}" aria-label="${run.voice?'Arrêter la lecture à voix haute':'Lire les sujets à voix haute'}">${ic(run.voice?'vol':'volx')}<span>${run.voice?'Voix':'Voix coupée'}</span></button><button class="hbtn" id="rnClose" aria-label="Quitter">${ic('x')}</button></span></div>
    <div class="rn-num">Sujet <b>${idx+1}</b> <span>· ${run.k+1} / ${L.length}</span></div>
    <p class="rn-tx">${esc(tx)}</p>
-   <div class="rn-ring"><svg viewBox="0 0 120 120"><circle class="bg" cx="60" cy="60" r="54"/><circle class="fg" id="rnArc" cx="60" cy="60" r="54" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-p)}"/></svg><b id="rnSec">${Math.ceil(left/1000)}</b></div>
+   <div class="rn-ring"><svg viewBox="0 0 120 120"><circle class="bg" cx="60" cy="60" r="54"/><circle class="fg" id="rnArc" cx="60" cy="60" r="54" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-p)}"/></svg><b id="rnSec">${run.speaking?ic('vol'):Math.ceil(left/1000)}</b></div>${run.voice?`<div class="rn-say" id="rnSay">${run.speaking?'Lecture du sujet…':'Temps de prière'}</div>`:''}
    <div class="rn-ctl"><button class="rbtn" id="rnPrev" aria-label="Sujet précédent">${ic('skipb')}</button><button class="rbtn big" id="rnPause" aria-label="${run.paused?'Reprendre':'Pause'}">${ic(run.paused?'play':'pause')}</button><button class="rbtn" id="rnNext" aria-label="Sujet suivant">${ic('skipf')}</button></div>
    <div class="rn-bar"><i id="rnBar" style="width:${(run.k)/L.length*100}%"></i></div><div class="rn-meta" id="rnMeta">Reste ${hm(restMin)}</div></div>`;return}
-  const a=$('#rnArc');if(a)a.setAttribute('stroke-dashoffset',C*(1-p));const s=$('#rnSec');if(s)s.textContent=Math.ceil(left/1000);const m=$('#rnMeta');if(m)m.textContent='Reste '+hm(restMin);
+  const a=$('#rnArc');if(a)a.setAttribute('stroke-dashoffset',C*(1-p));const s=$('#rnSec');if(s)s.textContent=Math.ceil(left/1000);const sy=$('#rnSay');if(sy)sy.textContent='Temps de prière';const m=$('#rnMeta');if(m)m.textContent='Reste '+hm(restMin);
 }
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.closest('#runner'))return;
   if(b.id==='rnClose')runClose();
-  else if(b.id==='rnPause'){if(run.paused){run.start=Date.now()-(run.sec*1000-run.pauseLeft);run.paused=false}else{run.pauseLeft=Math.max(0,run.sec*1000-(Date.now()-run.start));run.paused=true}runPaint(true)}
-  else if(b.id==='rnNext'){run.mark(run.list[run.k][2]??run.list[run.k][0]);if(run.k<run.list.length-1){run.k++;run.start=Date.now();run.paused=false;runPaint(true)}else{run.done=true;runPaint(true)}}
-  else if(b.id==='rnPrev'){if(run.k>0)run.k--;run.start=Date.now();run.paused=false;runPaint(true)}});
+  else if(b.id==='rnPause'){if(!run.paused&&run.speaking){voxStop();run.spokenK=-1;run.start=Date.now()}if(run.paused){run.start=Date.now()-(run.sec*1000-run.pauseLeft);run.paused=false}else{run.pauseLeft=Math.max(0,run.sec*1000-(Date.now()-run.start));run.paused=true}runPaint(true)}
+  else if(b.id==='rnNext'){voxStop();run.mark(run.list[run.k][2]??run.list[run.k][0]);if(run.k<run.list.length-1){run.k++;run.start=Date.now();run.paused=false;runPaint(true)}else{run.done=true;runPaint(true)}}
+  else if(b.id==='rnPrev'){voxStop();run.spokenK=-1;if(run.k>0)run.k--;run.start=Date.now();run.paused=false;runPaint(true)}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&run.on)wake()});
+/* ================= Voix : lecture à voix haute (mode voiture) ================= */
+const VOX=()=>Object.assign({rate:1,theme:true,on:false},ls.get('apg_voice',{}));
+const voxSet=o=>ls.set('apg_voice',Object.assign(VOX(),o));
+const TTS=window.speechSynthesis;
+function voxVoice(){if(!TTS)return null;const v=TTS.getVoices();return v.find(x=>/^fr[-_]FR/i.test(x.lang)&&/google|natural|neural|amélie|thomas/i.test(x.name))||v.find(x=>/^fr[-_]FR/i.test(x.lang))||v.find(x=>/^fr/i.test(x.lang))||null}
+if(TTS&&TTS.addEventListener)TTS.addEventListener('voiceschanged',()=>{});
+/* découpe en phrases courtes (certains téléphones coupent les longues lectures) */
+const voxRef=t=>String(t||'').replace(/(\d+)\s*:\s*(\d+)(?:\s*-\s*(\d+))?/g,(m,c,v,w)=>'chapitre '+c+', verset '+v+(w?' à '+w:''));
+const voxChunks=t=>(voxRef(t).replace(/\s+/g,' ').match(/[^.!?;:,]+[.!?;:,]*\s*/g)||[]).map(x=>x.trim()).reduce((a,p)=>{if(a.length&&(a[a.length-1]+' '+p).length<160)a[a.length-1]+=' '+p;else a.push(p);return a},[]).filter(x=>x.trim());
+function voxSay(text,done){if(!TTS){done&&done(false);return}
+  try{TTS.cancel()}catch(_){}const parts=voxChunks(text);const id=(voxSay.n=(voxSay.n||0)+1);let i=0;const cfg=VOX();
+  const guard=setTimeout(()=>{if(voxSay.n===id){voxSay.n++;done&&done(true)}},Math.max(6000,String(text).length*110/cfg.rate+4000));
+  const next=()=>{if(voxSay.n!==id)return;if(i>=parts.length){clearTimeout(guard);done&&done(true);return}
+    const u=new SpeechSynthesisUtterance(parts[i++]);u.lang='fr-FR';const v=voxVoice();if(v)u.voice=v;u.rate=cfg.rate;u.pitch=1;
+    u.onend=next;u.onerror=e=>{if(e.error==='interrupted'||e.error==='canceled')return;clearTimeout(guard);if(voxSay.n===id){voxSay.n++;done&&done(false)}};TTS.speak(u)};
+  next()}
+function voxStop(){voxSay.n=(voxSay.n||0)+1;try{TTS&&TTS.cancel()}catch(_){}run.speaking=false}
+/* son silencieux en boucle : permet aux boutons du volant / du casque Bluetooth (suivant, précédent, pause) de piloter la séance */
+let voxAudio=null;
+function voxMedia(on){
+  if(!on){try{voxAudio&&voxAudio.pause()}catch(_){}if('mediaSession' in navigator){['play','pause','nexttrack','previoustrack'].forEach(a=>{try{navigator.mediaSession.setActionHandler(a,null)}catch(_){}})}return}
+  if(!voxAudio){const sr=8000,n=sr,buf=new ArrayBuffer(44+n*2),d=new DataView(buf);const w=(o,s)=>{for(let i=0;i<s.length;i++)d.setUint8(o+i,s.charCodeAt(i))};
+    w(0,'RIFF');d.setUint32(4,36+n*2,true);w(8,'WAVEfmt ');d.setUint32(16,16,true);d.setUint16(20,1,true);d.setUint16(22,1,true);d.setUint32(24,sr,true);d.setUint32(28,sr*2,true);d.setUint16(32,2,true);d.setUint16(34,16,true);w(36,'data');d.setUint32(40,n*2,true);
+    voxAudio=new Audio(URL.createObjectURL(new Blob([buf],{type:'audio/wav'})));voxAudio.loop=true;voxAudio.volume=0.01}
+  voxAudio.play().catch(()=>{});
+  if('mediaSession' in navigator){const ms=navigator.mediaSession;const cl=id=>()=>{const b=document.getElementById(id);if(b)b.click()};
+    try{ms.setActionHandler('play',cl('rnPause'));ms.setActionHandler('pause',cl('rnPause'));ms.setActionHandler('nexttrack',cl('rnNext'));ms.setActionHandler('previoustrack',cl('rnPrev'))}catch(_){}}}
+function voxMeta(t){if('mediaSession' in navigator&&window.MediaMetadata){try{navigator.mediaSession.metadata=new MediaMetadata({title:t.slice(0,90),artist:run.title||'Autel de Prière',album:'Autel de Prière'})}catch(_){}}}
+/* lit le sujet courant puis lance le temps de prière */
+function voxSubject(){if(!run.on||!run.voice||run.done||run.paused)return;const it=run.list[run.k];if(!it)return;run.spokenK=run.k;
+  const prev=run.list[run.k-1];const th=it[3]&&VOX().theme&&(!prev||prev[3]!==it[3]||run.k===run.firstK)?'Thème : '+it[3]+'. ':'';
+  run.speaking=true;voxMeta(it[1]);const k=run.k;
+  voxSay(th+'Sujet '+(it[0]+1)+'. '+it[1],()=>{if(run.k!==k||!run.on)return;run.speaking=false;run.start=Date.now();runPaint(true)})}
+function voxToggle(){run.voice=!run.voice;voxSet({on:run.voice});if(run.voice){if(!TTS){toast('La lecture à voix haute n’est pas disponible dans ce navigateur.');run.voice=false;return}voxMedia(true);run.spokenK=-1;voxSubject()}else{voxStop();voxMedia(false);run.start=Date.now()}runPaint(true)}
+/* carte Réglages */
+function voxCard(){const v=VOX();return `<div class="card"><b class="ctitle">${ic('car')}Lecture à voix haute (mode voiture)</b>
+  <p class="muted mt">Pendant une séance, l’application lit chaque sujet à voix haute, puis vous laisse le temps de prier (${num('secondes',30)} s) avant le suivant. Idéal au volant : vous n’avez pas besoin de regarder l’écran.</p>
+  <div class="row mt" style="align-items:flex-end"><label class="f" style="flex:0 1 180px">Vitesse de lecture<select id="voxRate">${[[0.8,'Lente'],[0.9,'Posée'],[1,'Normale'],[1.1,'Rapide'],[1.2,'Très rapide']].map(([r,l])=>`<option value="${r}" ${+v.rate===r?'selected':''}>${l}</option>`).join('')}</select></label>
+  <button class="btn" id="voxTest" style="flex:0 0 auto">${ic('play')}Écouter un exemple</button></div>
+  <label class="chk mt"><input type="checkbox" id="voxTheme" ${v.theme?'checked':''}><span>Annoncer le nom du thème quand il change</span></label>
+  ${TTS?'':'<p class="lk-msg mt">Ce navigateur ne sait pas lire à voix haute. Utilisez Chrome (Android, PC) ou Safari (iPhone).</p>'}</div>`}
+document.addEventListener('change',e=>{const t=e.target;if(t.id==='voxRate'){voxSet({rate:+t.value});voxSay('Prions pour que le Seigneur garde notre maison et notre voiture.')}else if(t.id==='voxTheme')voxSet({theme:t.checked})});
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.id==='voxTest')voxSay('Thème : Invoquer et relâcher le feu de Dieu. Sujet 1. Invoquons le feu du Saint-Esprit sur notre maison.');
+  else if(b.id==='rnVoice')voxToggle();
+  else if(b.id==='runCar'){runJour(true)}});
+
+/* ================= Dictée vocale pour Gemini (description et consigne) ================= */
+const aiDict={on:false,field:null,rec:null,interim:''};
+const AIF={aiDesc:'desc',aiInstr:'instr'};
+function aiDictText(t){return String(t).replace(/\s*\bvirgule\b\s*/gi,', ').replace(/\s*\bpoint[- ]virgule\b\s*/gi,' ; ').replace(/\s*\bdeux[- ]points\b\s*/gi,' : ').replace(/\s*\bpoint (final|à la ligne)\b\s*/gi,'. ').replace(/\s*\bà la ligne\b\s*/gi,'\n').replace(/\s*\b(point d’interrogation|point d'interrogation)\s*$/i,' ?').replace(/\s*\bpoint\s*$/i,'.').replace(/\s+([,.;:])/g,'$1').trim()}
+function aiDictPaint(){const f=aiDict.field;const el=f&&$('#'+f);if(el){const base=AI[AIF[f]]||'';el.value=base+(aiDict.interim?(base&&!/\s$/.test(base)?' ':'')+aiDict.interim:'')}
+  document.querySelectorAll('[data-aidict]').forEach(b=>{const on=aiDict.on&&b.dataset.aidict===f;b.classList.toggle('rec',on);b.innerHTML=on?`${ic('mic')}Arrêter la dictée`:`${ic('mic')}Dicter`;b.setAttribute('aria-pressed',on)})}
+function aiDictStart(f){
+  if(!SR){toast(isIOS?'Sur iPhone : touchez la zone de texte, puis le micro du clavier pour dicter.':'La dictée n’est pas disponible dans ce navigateur. Utilisez Chrome, ou le micro du clavier.');const el=$('#'+f);if(el)el.focus();return}
+  aiDictStop();dict.on&&dictStop(true);aiRead();
+  const r=new SR();r.lang='fr-FR';r.continuous=true;r.interimResults=true;
+  r.onresult=e=>{let fin='',int='';for(let i=e.resultIndex;i<e.results.length;i++){const x=e.results[i];if(x.isFinal)fin+=x[0].transcript;else int+=x[0].transcript}
+    if(fin){const k=AIF[f];let base=AI[k]||'';let add=aiDictText(fin);if(!base||/[.!?]\s*$/.test(base)||/\n$/.test(base))add=capFirst(add);AI[k]=base+(base&&!/[\s\n]$/.test(base)?' ':'')+add;aiSaveDraft()}
+    aiDict.interim=int;aiDictPaint()};
+  r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){toast('Autorisez l’accès au micro pour cette application, puis réessayez.');aiDictStop()}else if(e.error==='network'){toast('La dictée a besoin d’internet.');aiDictStop()}};
+  r.onend=()=>{if(aiDict.on&&aiDict.rec===r){try{r.start()}catch(_){}}};
+  Object.assign(aiDict,{on:true,field:f,rec:r,interim:''});try{r.start();toast('Parlez : votre texte s’écrit tout seul. « Virgule », « point », « à la ligne » sont compris.')}catch(_){aiDict.on=false}
+  aiDictPaint()}
+function aiDictStop(){const r=aiDict.rec;aiDict.rec=null;const was=aiDict.on;aiDict.on=false;aiDict.interim='';if(r){try{r.stop()}catch(_){}}if(was){aiSaveDraft();aiDictPaint()}}
+const aiMic=f=>`<button type="button" class="btn small mic${aiDict.on&&aiDict.field===f?' rec':''}" data-aidict="${f}" aria-pressed="${aiDict.on&&aiDict.field===f}">${ic('mic')}${aiDict.on&&aiDict.field===f?'Arrêter la dictée':'Dicter'}</button>`;
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.aidict){if(aiDict.on&&aiDict.field===b.dataset.aidict)aiDictStop();else aiDictStart(b.dataset.aidict)}
+  else if(['aiGo','aiGo2','aiClose','aiApply','aiClear'].includes(b.id)||b.dataset.aimode||b.closest('nav.tabs'))aiDictStop()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)aiDictStop()});
 
 /* ----- Événements de la page ----- */
 document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b||b.closest('#runner'))return;const d=b.dataset;const n=curNight();
@@ -877,7 +952,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('button');if(b&&b
 /* ================= Réglages ================= */
 function vReglages(){
   const s=SET();const nb=Object.keys(D.subj).length;
-  return `${fontCard()}<div class="card"><b class="ctitle">${ic('home')}Foyer</b><div class="row mt"><label class="f" style="flex:2 1 260px">Nom affiché en haut<input type="text" id="setFoyer" value="${esc(s.foyer||'')}"></label></div></div>
+  return `${fontCard()}${voxCard()}<div class="card"><b class="ctitle">${ic('home')}Foyer</b><div class="row mt"><label class="f" style="flex:2 1 260px">Nom affiché en haut<input type="text" id="setFoyer" value="${esc(s.foyer||'')}"></label></div></div>
   <div class="card"><b class="ctitle">${ic('clock')}Rythme de prière</b><div class="row mt"><label class="f">Début de la rotation (lundi du lot 1)<input type="text" inputmode="numeric" autocomplete="off" placeholder="jj/mm/aa" maxlength="8" data-date id="setDeb" value="${fmt(esc(s.debut||''))}"></label><label class="f">Secondes par sujet<input type="number" id="setSec" min="10" max="120" value="${num('secondes',30)}"></label><label class="f">Sujets par lot<input type="number" id="setLot" min="3" max="30" value="${LOT()}"></label></div>
    <p class="muted mt">Chaque semaine, chaque thème passe au lot suivant, puis revient au lot 1. Les flèches ‹ › d'un thème décalent son lot sur cet appareil seulement.</p><button class="btn" id="resetOff">Remettre tous les lots à la rotation normale</button></div>
   <div class="card"><b class="ctitle">${ic('flame')}Intention de chaque jour</b><p class="muted">Décochez « communs » pour les jours sans les thèmes communs.</p>
@@ -886,7 +961,7 @@ function vReglages(){
    <div class="row mt"><label class="f" style="flex:2 1 220px">Nouvelle catégorie<input type="text" id="catNew" placeholder="ex. MALADES, VOYAGES"></label><button class="btn primary" id="catAdd" style="flex:0 0 auto">Ajouter</button></div></div>
   <div class="card"><b class="ctitle">${ic('church')}Programme de l'église</b><div class="row mt"><label class="f">Jour d'où viennent les sujets générés<select id="setSrc">${DAYS.map(d=>`<option ${d===(s.sourceEglise||'SAMEDI')?'selected':''}>${d}</option>`).join('')}</select></label></div>
    <p class="muted mt">Types d'activités : ${list_('evTypes').map(x=>`<span class="chip">${esc(x)} <button class="btn small" data-deltype="${esc(x)}" aria-label="Supprimer ${esc(x)}">×</button></span>`).join(' ')}</p></div>
-  ${geminiCard()}${pwdCard()}
+  ${geminiCard()}${pwdCard()}<p class="muted" style="text-align:center;font-size:.8rem;margin:18px 0 0">Autel de Prière · version ${APP_VERSION}</p>
   <div class="card"><b class="ctitle">${ic('link')}Application et connexion</b>
    <div class="row mt"><label class="f" style="flex:2 1 220px">Prénom sur cet appareil (journal de prière)<input type="text" id="setMe" value="${esc((CFG&&CFG.me)||'')}"></label></div>
    <p class="mt"><b>Connexion au serveur :</b> ${hb.at?(hb.ok?`<span style="color:var(--ok);font-weight:700">connecté</span>, vérifié à ${hm24(new Date(hb.at))}`:`<span style="color:#D33F49;font-weight:700">injoignable</span> depuis ${hm24(new Date(hb.at))}`):'pas encore vérifiée'} <button class="btn small" id="testConn">${ic('refresh')}Tester maintenant</button></p>
@@ -1044,6 +1119,17 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-xp]'
 const aiOn=()=>!!(D.ai&&D.ai.on);
 const replDefault=()=>aiOn()&&String(SET().remplacerAuto||'Oui')!=='Non';
 const AI={ctx:null,mode:'gen',busy:false,items:null,err:'',desc:'',instr:'',n:10,scope:'lot'};
+/* Brouillon Gemini : la description, la consigne et les sujets proposés sont gardés à chaque frappe,
+   même si l'écran se recharge, se verrouille ou si l'application est fermée. */
+const AI_DRAFT='apg_ai_draft';const APP_VERSION='v26 du 16/11/26';
+function aiSaveDraft(){try{ls.set(AI_DRAFT,{t:Date.now(),ctx:AI.ctx,mode:AI.mode,desc:AI.desc,instr:AI.instr,n:AI.n,scope:AI.scope,items:AI.items,th:st.thCode})}catch(_){}}
+(function aiLoadDraft(){const d=ls.get(AI_DRAFT,null);if(!d||Date.now()-(d.t||0)>7*864e5)return;
+  Object.assign(AI,{ctx:d.ctx||null,mode:d.mode||'gen',desc:d.desc||'',instr:d.instr||'',n:d.n||10,scope:d.scope||'lot',items:d.items||null});if(d.th)st.thCode=st.thCode||d.th})();
+document.addEventListener('input',e=>{const t=e.target;if(!t)return;
+  if(t.id==='aiDesc')AI.desc=t.value;else if(t.id==='aiInstr')AI.instr=t.value;
+  else if(t.dataset&&t.dataset.aitx!==undefined&&AI.items&&AI.items[+t.dataset.aitx])AI.items[+t.dataset.aitx].text=t.value;else return;
+  clearTimeout(aiSaveDraft.h);aiSaveDraft.h=setTimeout(aiSaveDraft,300)});
+document.addEventListener('change',e=>{const t=e.target;if(t&&(t.id==='aiN'||t.id==='aiScope')){aiRead();aiSaveDraft()}});
 function aiTarget(){if(AI.ctx==='theme'){const t=byCode(st.thCode);return t?{label:'le thème « '+t.t+' »',to:'au thème « '+t.t+' »',code:t.c}:null}
   if(AI.ctx==='nuit'){const n=curNight();return n?{label:'cette nuit',to:'à la nuit',night:n}:null}
   if(AI.ctx==='eglise')return {label:'le '+JOURS7[st.ceDay].toLowerCase(),to:'au '+JOURS7[st.ceDay].toLowerCase()};return null}
@@ -1055,10 +1141,12 @@ function aiCard(ctx){if(AI.ctx!==ctx)return '';const T=aiTarget();if(!T)return '
     ${ctx==='theme'?`<div class="seg" role="tablist"><button class="${rw?'':'on'}" data-aimode="gen" role="tab" aria-selected="${!rw}">Nouveaux sujets</button><button class="${rw?'on':''}" data-aimode="rw" role="tab" aria-selected="${rw}">Mettre à jour</button></div>`:''}</div>`;
   let form;
   if(!rw)form=`<label class="f mt">Décrivez ce que vous voulez<textarea id="aiDesc" rows="3" placeholder="ex. la santé de Gabriel et sa réussite aux examens ; la protection de la maison pendant les voyages ; la promotion de Tati au travail…">${esc(AI.desc)}</textarea></label>
+    <div class="acts left" style="margin-top:6px">${aiMic('aiDesc')}<span class="muted" style="font-size:.8rem">Parlez : la description s’écrit toute seule.</span></div>
     <div class="row mt" style="align-items:flex-end"><label class="f" style="flex:0 1 130px">Combien<select id="aiN">${[5,10,20,30,50,100].map(v=>`<option ${v===AI.n?'selected':''}>${v}</option>`).join('')}</select></label>
     <button class="btn primary" id="aiGo" style="flex:0 0 auto" ${AI.busy?'disabled':''}>${ic('sparkle')}${AI.busy?'Gemini écrit…':'Générer avec Gemini'}</button></div>`;
   else{const t=byCode(st.thCode);const a=subjects(t.c);const nSel=Object.keys(st.sel||{}).filter(k=>st.sel[k]&&D.subj[k]&&D.subj[k].code===t.c).length;
     form=`<label class="f mt">Que faut-il changer ?<textarea id="aiInstr" rows="2" placeholder="ex. rendre les sujets plus courts ; ajouter « au nom de Jésus » ; parler de notre famille (Thierry, Tati et les enfants) ; enlever les références bibliques">${esc(AI.instr)}</textarea></label>
+    <div class="acts left" style="margin-top:6px">${aiMic('aiInstr')}</div>
     <div class="row mt" style="align-items:flex-end"><label class="f" style="flex:1 1 220px">Quels sujets<select id="aiScope">
       <option value="lot" ${AI.scope==='lot'?'selected':''}>Le lot de cette semaine (${Math.min(LOT(),a.length)})</option>
       ${[20,50,100].filter(v=>v<a.length).map(v=>`<option value="${v}" ${AI.scope==v?'selected':''}>Les ${v} premiers</option>`).join('')}
@@ -1072,8 +1160,8 @@ function aiCard(ctx){if(AI.ctx!==ctx)return '';const T=aiTarget();if(!T)return '
      <div class="acts left mt"><button class="btn primary" id="aiApply" ${nOn?'':'disabled'}>${ic('check')}${rw?`Appliquer ${nOn} changement${nOn>1?'s':''}`:`Ajouter ${nOn} sujet${nOn>1?'s':''} ${esc(T.to)}`}</button><button class="btn" id="aiGo2" ${AI.busy?'disabled':''}>${ic('undo')}Proposer d’autres</button></div>
      <p class="muted note">Relisez et corrigez chaque sujet si besoin : rien n’est enregistré avant d’appuyer sur le bouton.${rw?' Les changements sont gardés dans la feuille REFORMULATIONS et peuvent être annulés (Thèmes › Reformuler comme moi › Annuler).':''}</p></div>`}
   else if(it&&!it.length)res+=`<p class="muted mt">Gemini n’a rien proposé de nouveau. Précisez la description et réessayez.</p>`;
-  return `<div class="card aic open">${head}${form}${res}<div class="acts left mt"><button class="btn small" id="aiClose">Fermer Gemini</button></div><p class="muted note">Le texte envoyé à Gemini (Google) : votre description et les sujets du thème. Évitez d’y mettre des informations très personnelles que vous ne voulez pas confier à Google.</p></div>`}
-function aiRead(){const d=$('#aiDesc'),i=$('#aiInstr'),n=$('#aiN'),s=$('#aiScope');if(d)AI.desc=d.value;if(i)AI.instr=i.value;if(n)AI.n=+n.value;if(s)AI.scope=s.value;
+  return `<div class="card aic open">${head}${form}${res}<div class="acts left mt"><button class="btn small" id="aiClose">Fermer Gemini</button>${(AI.desc||AI.instr||AI.items)?'<button class="btn small" id="aiClear">Effacer le brouillon</button>':''}<span class="muted" style="font-size:.8rem">Votre texte est gardé automatiquement, même si l’application se ferme.</span></div><p class="muted note">Le texte envoyé à Gemini (Google) : votre description et les sujets du thème. Évitez d’y mettre des informations très personnelles que vous ne voulez pas confier à Google.</p></div>`}
+function aiRead(){const d=$('#aiDesc'),i=$('#aiInstr'),n=$('#aiN'),s=$('#aiScope');if(d)AI.desc=d.value;if(i)AI.instr=i.value;if(n)AI.n=+n.value;if(s)AI.scope=s.value;setTimeout(aiSaveDraft,0);
   if(AI.items)document.querySelectorAll('[data-aitx]').forEach(t=>{const x=AI.items[+t.dataset.aitx];if(x)x.text=t.value.trim()})}
 async function aiRun(){aiRead();const T=aiTarget();if(!T)return;AI.err='';
   let fn,arg;
@@ -1088,7 +1176,7 @@ async function aiRun(){aiRead();const T=aiTarget();if(!T)return;AI.err='';
   try{let out=[];
     if(fn==='aiGenerate'){const r=await call('aiGenerate',arg);out=(r.items||[]).map(t=>({text:t,on:true}))}
     else{for(let i=0;i<arg.length;i+=50){const r=await call('aiRewrite',{instr:AI.instr.trim(),code:st.thCode,items:arg.slice(i,i+50)});out=out.concat((r.items||[]).map(x=>({id:x.id,old:x.old,text:x.text,on:true})))}}
-    AI.items=out}
+    AI.items=out;aiSaveDraft()}
   catch(e){AI.err=e instanceof NetErr?'Gemini demande internet : reconnectez-vous puis réessayez.':e.message;if(e.code==='NOGEM'&&D.ai)D.ai.on=false}
   finally{AI.busy=false;render(true)}}
 async function aiApply(){aiRead();const T=aiTarget();const keep=(AI.items||[]).filter(x=>x.on&&x.text);if(!T||!keep.length)return;
@@ -1102,7 +1190,8 @@ async function aiApply(){aiRead();const T=aiTarget();const keep=(AI.items||[]).f
 document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
   if(d.aiopen){const same=AI.ctx===d.aiopen;Object.assign(AI,{ctx:same?null:d.aiopen,items:null,err:'',mode:'gen'});render(true);if(!same)setTimeout(()=>{const x=$('#aiDesc');if(x){x.focus();x.closest('.card').scrollIntoView({block:'nearest'})}},50)}
   else if(d.aimode){aiRead();AI.mode=d.aimode;AI.items=null;AI.err='';render(true)}
-  else if(b.id==='aiClose'){AI.ctx=null;AI.items=null;render(true)}
+  else if(b.id==='aiClose'){aiRead();AI.ctx=null;aiSaveDraft();render(true)}
+  else if(b.id==='aiClear'){Object.assign(AI,{desc:'',instr:'',items:null,err:''});aiSaveDraft();render(true);setTimeout(()=>{const x=$('#aiDesc')||$('#aiInstr');if(x)x.focus()},50)}
   else if(b.id==='aiToSet'){AI.ctx=null;st.tab='reglages';render()}
   else if(b.id==='aiGo'||b.id==='aiGo2')await aiRun();
   else if(b.id==='aiApply'){b.disabled=true;await aiApply()}
@@ -1129,17 +1218,18 @@ document.addEventListener('change',async e=>{if(e.target.id==='gemRepl'){const v
 
 /* ================= Rendu ================= */
 const TABS={jour:['Prière du jour','flame'],nuit:['Nuit de prière','moon'],chants:['Louange et adoration','music'],themes:['Thèmes et sujets','book'],exauces:['Sujets exaucés','star'],eglise:["Programme de l'église",'church'],reglages:['Réglages','sliders']};
-const KEEP=['ngKey','chNewLouange','chNewAdoration','pwOld','pwNew','pwNew2','chNew','chNewA','chBulkTx','chEdT','chEdA','chEdK','chEdL','chEdN','nTitre','nPaste','nEdTx','nTitreEd','setMe','cfUrl','cfKey','cfMe','edTx','tem','remp','temd','ceTx','ceTitre','ceCond','evTi','evS','evR','evTn','gName','gCatNew','libTx','libTem','catNew','setFoyer'];
+const KEEP=['aiDesc','aiInstr','gemKey','ngKey','chNewLouange','chNewAdoration','pwOld','pwNew','pwNew2','chNew','chNewA','chBulkTx','chEdT','chEdA','chEdK','chEdL','chEdN','nTitre','nPaste','nEdTx','nTitreEd','setMe','cfUrl','cfKey','cfMe','edTx','tem','remp','temd','ceTx','ceTitre','ceCond','evTi','evS','evR','evTn','gName','gCatNew','libTx','libTem','catNew','setFoyer'];
 function hdr(){$('#hdrSub').textContent=SET().foyer||'Notre foyer'}
 function render(force){
   if(!D.loaded)return;hdr();
-  const ae=document.activeElement;if(!force&&ae&&(KEEP.includes(ae.id)||(ae.dataset&&ae.dataset.note!==undefined)))return;
-  const keep=ae&&['q','newTx','exQ'].includes(ae.id)?[ae.id,ae.selectionStart]:null;
+  if(!force&&aiDict.on)return;const ae=document.activeElement;if(!force&&ae&&(KEEP.includes(ae.id)||(ae.dataset&&(ae.dataset.note!==undefined||ae.dataset.aitx!==undefined))))return;
+  if(ae&&(ae.id==='aiDesc'||ae.id==='aiInstr'||(ae.dataset&&ae.dataset.aitx!==undefined)))aiRead();
+  const keep=ae&&(['q','newTx','exQ','aiDesc','aiInstr'].includes(ae.id)||(ae.dataset&&ae.dataset.aitx!==undefined))?[ae.id||null,ae.selectionStart,ae.dataset&&ae.dataset.aitx]:null;const sy=window.scrollY;
   document.querySelectorAll('nav.tabs button').forEach(x=>x.setAttribute('aria-selected',x.dataset.tab===st.tab));
   const g=$('#gear');if(g)g.classList.toggle('on',st.tab==='reglages');
   $('#pagehead').innerHTML=st.tab==='jour'?vHero():`<div class="pagehead">${ic(TABS[st.tab][1])}<h2>${TABS[st.tab][0]}</h2></div>`;
   {const v=({jour:vJour,nuit:vNuit,chants:vChants,themes:vThemes,exauces:vExauces,eglise:vEglise,reglages:vReglages}[st.tab]||vJour)();$('#view').innerHTML=xBar()+v}
-  if(keep){const e=document.getElementById(keep[0]);if(e){e.focus();try{e.setSelectionRange(keep[1],keep[1])}catch(_){}}}
+  if(keep){const e=keep[0]?document.getElementById(keep[0]):document.querySelector(`[data-aitx="${keep[2]}"]`);if(e){e.focus({preventScroll:true});try{e.setSelectionRange(keep[1],keep[1])}catch(_){}window.scrollTo(0,sy)}}
 }
 function findSubj(id){const s=D.subj[id];return s?[byCode(s.code)||{t:'',c:s.code},s]:[null,null]}
 function journalNow(){if(st.day!==todayDay())return;const N=LOT();let tot=0,f=0;dayThemes(st.day).forEach(x=>{const a=subjects(x.c);const l=lotFor(x.c,a.length);lotItems(a,l,N).forEach(s=>{tot++;if(prie[s.id])f++})});
