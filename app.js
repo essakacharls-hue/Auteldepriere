@@ -1121,7 +1121,7 @@ const replDefault=()=>aiOn()&&String(SET().remplacerAuto||'Oui')!=='Non';
 const AI={ctx:null,mode:'gen',busy:false,items:null,err:'',desc:'',instr:'',n:10,scope:'lot'};
 /* Brouillon Gemini : la description, la consigne et les sujets proposés sont gardés à chaque frappe,
    même si l'écran se recharge, se verrouille ou si l'application est fermée. */
-const AI_DRAFT='apg_ai_draft';const APP_VERSION='v26 du 16/11/26';
+const AI_DRAFT='apg_ai_draft';const AI_MAX=1000,AI_LOT=50;const APP_VERSION='v27 du 16/11/26';
 function aiSaveDraft(){try{ls.set(AI_DRAFT,{t:Date.now(),ctx:AI.ctx,mode:AI.mode,desc:AI.desc,instr:AI.instr,n:AI.n,scope:AI.scope,items:AI.items,th:st.thCode})}catch(_){}}
 (function aiLoadDraft(){const d=ls.get(AI_DRAFT,null);if(!d||Date.now()-(d.t||0)>7*864e5)return;
   Object.assign(AI,{ctx:d.ctx||null,mode:d.mode||'gen',desc:d.desc||'',instr:d.instr||'',n:d.n||10,scope:d.scope||'lot',items:d.items||null});if(d.th)st.thCode=st.thCode||d.th})();
@@ -1142,8 +1142,12 @@ function aiCard(ctx){if(AI.ctx!==ctx)return '';const T=aiTarget();if(!T)return '
   let form;
   if(!rw)form=`<label class="f mt">Décrivez ce que vous voulez<textarea id="aiDesc" rows="3" placeholder="ex. la santé de Gabriel et sa réussite aux examens ; la protection de la maison pendant les voyages ; la promotion de Tati au travail…">${esc(AI.desc)}</textarea></label>
     <div class="acts left" style="margin-top:6px">${aiMic('aiDesc')}<span class="muted" style="font-size:.8rem">Parlez : la description s’écrit toute seule.</span></div>
-    <div class="row mt" style="align-items:flex-end"><label class="f" style="flex:0 1 130px">Combien<select id="aiN">${[5,10,20,30,50,100].map(v=>`<option ${v===AI.n?'selected':''}>${v}</option>`).join('')}</select></label>
-    <button class="btn primary" id="aiGo" style="flex:0 0 auto" ${AI.busy?'disabled':''}>${ic('sparkle')}${AI.busy?'Gemini écrit…':'Générer avec Gemini'}</button></div>`;
+    <div class="row mt" style="align-items:flex-end"><label class="f" style="flex:0 1 130px">Combien<input type="number" id="aiN" min="1" max="${AI_MAX}" step="1" inputmode="numeric" value="${AI.n}"></label>
+    ${AI.busy?`<button class="btn primary" disabled style="flex:0 0 auto">${ic('sparkle')}Gemini écrit… ${AI.prog?AI.prog.done+' / '+AI.prog.total:''}</button><button class="btn" id="aiStop" style="flex:0 0 auto">Arrêter</button>`
+      :`<button class="btn primary" id="aiGo" style="flex:0 0 auto">${ic('sparkle')}Générer avec Gemini</button>`}</div>
+    <div class="acts left" style="margin-top:6px">${[10,20,50,100,200,300].map(v=>`<button class="btn small chip${v===AI.n?' on':''}" data-ain="${v}">${v}</button>`).join('')}${(()=>{if(AI.ctx!=='nuit'||!T.night)return '';const sec=+T.night.sec||30;const f=(T.night.items||[]).filter(Boolean).length;const k=Math.max(0,Math.round(10800/sec)-f);return k?`<button class="btn small chip" data-ain="${k}">Compléter 3 h de prière (${k})</button>`:''})()}</div>
+    ${AI.busy&&AI.prog?`<div class="aiprog"><i style="width:${Math.round(AI.prog.done/AI.prog.total*100)}%"></i></div>`:''}
+    <p class="muted note" style="margin:6px 0 0">Pas de limite fixe : au-delà de 50, Gemini écrit par séries de 50 (environ 20 à 40 s par série). Vous pouvez arrêter à tout moment, les sujets déjà écrits restent.</p>`;
   else{const t=byCode(st.thCode);const a=subjects(t.c);const nSel=Object.keys(st.sel||{}).filter(k=>st.sel[k]&&D.subj[k]&&D.subj[k].code===t.c).length;
     form=`<label class="f mt">Que faut-il changer ?<textarea id="aiInstr" rows="2" placeholder="ex. rendre les sujets plus courts ; ajouter « au nom de Jésus » ; parler de notre famille (Thierry, Tati et les enfants) ; enlever les références bibliques">${esc(AI.instr)}</textarea></label>
     <div class="acts left" style="margin-top:6px">${aiMic('aiInstr')}</div>
@@ -1161,7 +1165,7 @@ function aiCard(ctx){if(AI.ctx!==ctx)return '';const T=aiTarget();if(!T)return '
      <p class="muted note">Relisez et corrigez chaque sujet si besoin : rien n’est enregistré avant d’appuyer sur le bouton.${rw?' Les changements sont gardés dans la feuille REFORMULATIONS et peuvent être annulés (Thèmes › Reformuler comme moi › Annuler).':''}</p></div>`}
   else if(it&&!it.length)res+=`<p class="muted mt">Gemini n’a rien proposé de nouveau. Précisez la description et réessayez.</p>`;
   return `<div class="card aic open">${head}${form}${res}<div class="acts left mt"><button class="btn small" id="aiClose">Fermer Gemini</button>${(AI.desc||AI.instr||AI.items)?'<button class="btn small" id="aiClear">Effacer le brouillon</button>':''}<span class="muted" style="font-size:.8rem">Votre texte est gardé automatiquement, même si l’application se ferme.</span></div><p class="muted note">Le texte envoyé à Gemini (Google) : votre description et les sujets du thème. Évitez d’y mettre des informations très personnelles que vous ne voulez pas confier à Google.</p></div>`}
-function aiRead(){const d=$('#aiDesc'),i=$('#aiInstr'),n=$('#aiN'),s=$('#aiScope');if(d)AI.desc=d.value;if(i)AI.instr=i.value;if(n)AI.n=+n.value;if(s)AI.scope=s.value;setTimeout(aiSaveDraft,0);
+function aiRead(){const d=$('#aiDesc'),i=$('#aiInstr'),n=$('#aiN'),s=$('#aiScope');if(d)AI.desc=d.value;if(i)AI.instr=i.value;if(n)AI.n=Math.max(1,Math.min(AI_MAX,Math.round(+n.value)||10));if(s)AI.scope=s.value;setTimeout(aiSaveDraft,0);
   if(AI.items)document.querySelectorAll('[data-aitx]').forEach(t=>{const x=AI.items[+t.dataset.aitx];if(x)x.text=t.value.trim()})}
 async function aiRun(){aiRead();const T=aiTarget();if(!T)return;AI.err='';
   let fn,arg;
@@ -1174,11 +1178,25 @@ async function aiRun(){aiRead();const T=aiTarget();if(!T)return;AI.err='';
     fn='aiRewrite';arg=a.map(x=>({id:x.id,text:x.text}))}
   AI.busy=true;render(true);
   try{let out=[];
-    if(fn==='aiGenerate'){const r=await call('aiGenerate',arg);out=(r.items||[]).map(t=>({text:t,on:true}))}
+    if(fn==='aiGenerate'){
+      /* génération par séries de 50 : pas de limite fixe, chaque série évite les sujets déjà écrits */
+      const total=arg.n,seen=new Set(arg.existants.map(norm));const prevItems=AI.items;AI.items=[];AI.prog={done:0,total};AI.stop=false;let vide=0,serie=0;
+      while(AI.items.length<total&&!AI.stop){serie++;const n=Math.min(AI_LOT,total-AI.items.length);
+        const deja=arg.existants.concat(AI.items.map(x=>x.text));
+        const desc=arg.desc+(serie>1?`\n(Série ${serie} : propose d’autres aspects et d’autres formulations que les sujets déjà écrits.)`:'');
+        const r=await call('aiGenerate',Object.assign({},arg,{n,desc,existants:deja.slice(-120)}));
+        const neuf=(r.items||[]).filter(t=>{const k=norm(t);if(!k||seen.has(k))return false;seen.add(k);return true});
+        AI.items=AI.items.concat(neuf.map(t=>({text:t,on:true})));AI.prog.done=Math.min(total,AI.items.length);aiSaveDraft();
+        if(!neuf.length){if(++vide>=2)break}else vide=0;
+        if(AI.items.length<total&&!AI.stop)render(true)}
+      if(AI.items.length>total)AI.items=AI.items.slice(0,total);
+      if(!AI.items.length&&prevItems&&AI.stop)AI.items=prevItems;
+      if(AI.items.length<total&&!AI.stop&&AI.items.length)toast(`Gemini a écrit ${AI.items.length} sujets différents sur ${total} demandés. Précisez la description pour en obtenir d’autres.`);
+      out=AI.items}
     else{for(let i=0;i<arg.length;i+=50){const r=await call('aiRewrite',{instr:AI.instr.trim(),code:st.thCode,items:arg.slice(i,i+50)});out=out.concat((r.items||[]).map(x=>({id:x.id,old:x.old,text:x.text,on:true})))}}
     AI.items=out;aiSaveDraft()}
   catch(e){AI.err=e instanceof NetErr?'Gemini demande internet : reconnectez-vous puis réessayez.':e.message;if(e.code==='NOGEM'&&D.ai)D.ai.on=false}
-  finally{AI.busy=false;render(true)}}
+  finally{AI.busy=false;AI.prog=null;AI.stop=false;render(true)}}
 async function aiApply(){aiRead();const T=aiTarget();const keep=(AI.items||[]).filter(x=>x.on&&x.text);if(!T||!keep.length)return;
   if(AI.mode==='rw'){const ch=keep.map(x=>({id:x.id,text:x.text,code:st.thCode}));
     try{const r=await act('applyRewrite',[ch,'Gemini : '+AI.instr.trim()]);if(r&&r.n){ch.forEach(c=>{const x=D.subj[c.id];if(x){x.text=c.text;x.aj=1}});D.rewrite={lot:r.lot,date:r.date,n:r.n};reindex();RW=null;AI.items=null;render(true);toast(r.n+' sujet'+(r.n>1?'s':'')+' mis à jour par Gemini. Vous pouvez annuler.')}}catch(_){}
@@ -1194,6 +1212,8 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button');i
   else if(b.id==='aiClear'){Object.assign(AI,{desc:'',instr:'',items:null,err:''});aiSaveDraft();render(true);setTimeout(()=>{const x=$('#aiDesc')||$('#aiInstr');if(x)x.focus()},50)}
   else if(b.id==='aiToSet'){AI.ctx=null;st.tab='reglages';render()}
   else if(b.id==='aiGo'||b.id==='aiGo2')await aiRun();
+  else if(b.id==='aiStop'){AI.stop=true;b.disabled=true;b.textContent='Arrêt après cette série…'}
+  else if(d.ain){AI.n=+d.ain;const x=$('#aiN');if(x)x.value=AI.n;aiSaveDraft();render(true)}
   else if(b.id==='aiApply'){b.disabled=true;await aiApply()}
   else if(b.id==='aiAll'||b.id==='aiNone'){aiRead();(AI.items||[]).forEach(x=>x.on=b.id==='aiAll');render(true)}});
 document.addEventListener('change',e=>{const t=e.target;if(t.dataset&&t.dataset.aion!==undefined&&AI.items){aiRead();AI.items[+t.dataset.aion].on=t.checked;render(true)}});
